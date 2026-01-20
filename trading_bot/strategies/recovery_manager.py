@@ -180,12 +180,14 @@ class StopOutTracker:
 class RecoveryManager:
     """Manage recovery strategies: Grid, Hedge, DCA/Martingale"""
 
-    def __init__(self, ml_logger=None):
+    def __init__(self, mt5_manager, ml_logger=None):
         """Initialize recovery manager
 
         Args:
+            mt5_manager: MT5Manager instance for fetching bars and symbol info
             ml_logger: ContinuousMLLogger instance for tracking M15 blocks (optional)
         """
+        self.mt5 = mt5_manager  # Store MT5Manager for ATR calculations and symbol info
         self.tracked_positions = {}  # Track active positions and their recovery state
         self.archived_positions = []  # Archive closed positions for ML analysis (last 100)
 
