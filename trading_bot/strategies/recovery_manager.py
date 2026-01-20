@@ -2771,6 +2771,8 @@ class RecoveryManager:
                     'pending': True,  # Will be cleared when ticket assigned
                     'ticket': None
                 })
+                # CRITICAL: Save updated list back to hedge_info to prevent duplicate triggers
+                hedge_info['dca_levels'] = hedge_dca_levels
 
                 print(f"🔄 [HEDGE DCA] Hedge #{hedge_ticket} needs DCA L{current_dca_count + 1}")
                 print(f"   Hedge: {hedge_type.upper()} at {hedge_entry_price:.5f} (losing ${abs(hedge_profit):.2f})")
