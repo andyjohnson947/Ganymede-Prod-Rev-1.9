@@ -3018,5 +3018,11 @@
       "closed_time": "2026-01-20T10:07:22.095259+00:00",
       "status": "closed"
     }
-  ]
+  ],
+  "cascade_blocks": {},
+  "market_trending_block": {
+    "EURUSD": true,
+    "GBPUSD": false
+  },
+  "last_block_update": "2026-01-20T09:05:01.427079"
 }
