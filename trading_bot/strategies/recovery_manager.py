@@ -2373,7 +2373,8 @@ class RecoveryManager:
             atr_14 = true_range.rolling(window=14).mean().iloc[-1]
 
             # Convert ATR to pips (multiply by 10000 for most pairs, 100 for JPY pairs)
-            point = self.mt5.symbol_info(symbol).point
+            symbol_info = self.mt5.get_symbol_info(symbol)
+            point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
             pip_multiplier = 10000 if 'JPY' not in symbol else 100
             atr_pips = (atr_14 / point) / (pip_multiplier / 10)
 
@@ -2407,7 +2408,8 @@ class RecoveryManager:
         trailing_pips = self.calculate_atr_trailing_distance(symbol, tp_settings)
 
         # Get point value for symbol
-        point = self.mt5.symbol_info(symbol).point
+        symbol_info = self.mt5.get_symbol_info(symbol)
+        point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
         trailing_distance = trailing_pips * point * 10
 
         # Set trailing stop
@@ -2447,7 +2449,8 @@ class RecoveryManager:
             if current_price > position['highest_profit_price']:
                 # New high - update trailing stop
                 position['highest_profit_price'] = current_price
-                point = self.mt5.symbol_info(symbol).point
+                symbol_info = self.mt5.get_symbol_info(symbol)
+                point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
                 trailing_distance = position['trailing_stop_distance_pips'] * point * 10
                 new_stop = current_price - trailing_distance
 
@@ -2460,7 +2463,8 @@ class RecoveryManager:
             if current_price < position['highest_profit_price']:
                 # New low - update trailing stop
                 position['highest_profit_price'] = current_price
-                point = self.mt5.symbol_info(symbol).point
+                symbol_info = self.mt5.get_symbol_info(symbol)
+                point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
                 trailing_distance = position['trailing_stop_distance_pips'] * point * 10
                 new_stop = current_price + trailing_distance
 
