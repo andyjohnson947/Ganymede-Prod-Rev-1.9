@@ -1501,6 +1501,102 @@ class ContinuousMLLogger:
         except Exception as e:
             print(f"[WARN] [LOGGER] Failed to log M15 recovery block for {ticket}: {e}")
 
+    def log_hedge_dca(self, original_ticket: int, hedge_ticket: int, symbol: str,
+                      hedge_dca_ticket: int, level: int, volume: float,
+                      hedge_pips_underwater: float, original_pips: float,
+                      hedge_type: str, dca_type: str, m15_confirmed: bool):
+        """
+        Log when hedge DCA is added (positions in ORIGINAL direction to help recovery).
+
+        This tracks the new hedge intelligence feature where DCAs are added to
+        underwater hedges (in the original direction) to accelerate recovery.
+
+        Args:
+            original_ticket: Original position ticket
+            hedge_ticket: Hedge position ticket
+            symbol: Trading symbol
+            hedge_dca_ticket: New hedge DCA position ticket
+            level: DCA level (1, 2, etc.)
+            volume: DCA volume in lots
+            hedge_pips_underwater: How far hedge is underwater (means original recovering)
+            original_pips: Original position pips (negative = underwater, positive = profitable)
+            hedge_type: Hedge direction ('buy' or 'sell')
+            dca_type: DCA direction (ORIGINAL direction, opposite of hedge)
+            m15_confirmed: Whether M15 trend confirmed (3 consecutive candles)
+        """
+        hedge_intelligence_log = self.output_dir / "hedge_intelligence.jsonl"
+
+        event_record = {
+            'event_type': 'hedge_dca',
+            'timestamp': datetime.now().isoformat(),
+            'original_ticket': int(original_ticket),
+            'hedge_ticket': int(hedge_ticket),
+            'hedge_dca_ticket': int(hedge_dca_ticket),
+            'symbol': symbol,
+            'level': int(level),
+            'volume': float(volume),
+            'hedge_pips_underwater': float(hedge_pips_underwater),
+            'original_pips': float(original_pips),
+            'hedge_type': hedge_type,
+            'dca_type': dca_type,  # ORIGINAL direction (opposite of hedge)
+            'm15_confirmed': bool(m15_confirmed)
+        }
+
+        # Convert numpy types
+        event_record = convert_numpy_types(event_record)
+
+        try:
+            with open(hedge_intelligence_log, 'a', encoding='utf-8', errors='ignore') as f:
+                f.write(json.dumps(event_record) + '\n')
+        except Exception as e:
+            print(f"[WARN] [LOGGER] Failed to log hedge DCA for {hedge_ticket}: {e}")
+
+    def log_hedge_partial_close(self, original_ticket: int, hedge_ticket: int, symbol: str,
+                                 close_percent: float, reason: str, original_pips: float,
+                                 hedge_profit: float, positions_closed: int,
+                                 hedge_dca_count: int):
+        """
+        Log when hedge + hedge DCAs are partially/fully closed due to original recovery.
+
+        This tracks the intelligent hedge close feature where hedges are closed in stages
+        (50%/75%/100%) as the original position recovers.
+
+        Args:
+            original_ticket: Original position ticket
+            hedge_ticket: Hedge position ticket
+            symbol: Trading symbol
+            close_percent: Percentage closed (0.5 = 50%, 0.75 = 75%, 1.0 = 100%)
+            reason: Why closing (e.g., "Original recovered 50%")
+            original_pips: Original position pips at close time
+            hedge_profit: Hedge profit/loss at close time
+            positions_closed: Number of positions closed (hedge + hedge DCAs)
+            hedge_dca_count: Number of hedge DCAs that were closed
+        """
+        hedge_intelligence_log = self.output_dir / "hedge_intelligence.jsonl"
+
+        event_record = {
+            'event_type': 'hedge_partial_close',
+            'timestamp': datetime.now().isoformat(),
+            'original_ticket': int(original_ticket),
+            'hedge_ticket': int(hedge_ticket),
+            'symbol': symbol,
+            'close_percent': float(close_percent),
+            'reason': reason,
+            'original_pips': float(original_pips),
+            'hedge_profit': float(hedge_profit),
+            'positions_closed': int(positions_closed),
+            'hedge_dca_count': int(hedge_dca_count)
+        }
+
+        # Convert numpy types
+        event_record = convert_numpy_types(event_record)
+
+        try:
+            with open(hedge_intelligence_log, 'a', encoding='utf-8', errors='ignore') as f:
+                f.write(json.dumps(event_record) + '\n')
+        except Exception as e:
+            print(f"[WARN] [LOGGER] Failed to log hedge partial close for {hedge_ticket}: {e}")
+
     def run(self, mt5_login: int, mt5_password: str, mt5_server: str, check_interval: int = 60):
         """
         Run continuous logging service

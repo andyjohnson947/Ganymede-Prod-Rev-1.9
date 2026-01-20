@@ -1472,6 +1472,55 @@ class ConfluenceStrategy:
                                     hedge_dca_levels[-1]['pending'] = False
                                     hedge_dca_levels[-1]['ticket'] = ticket
                                     print(f"   Hedge DCA {ticket} linked to hedge {hedge_ticket} (helps ORIGINAL recovery)")
+
+                                    # ML LOGGING: Log hedge DCA event
+                                    if self.ml_logger:
+                                        # Get data for logging
+                                        all_positions = self.mt5.get_positions()
+                                        original_pos = None
+                                        hedge_pos = None
+                                        for pos in all_positions:
+                                            if pos.get('ticket') == original_ticket:
+                                                original_pos = pos
+                                            elif pos.get('ticket') == hedge_ticket:
+                                                hedge_pos = pos
+
+                                        if original_pos and hedge_pos:
+                                            symbol_info = self.mt5.get_symbol_info(symbol)
+                                            pip_value = symbol_info.get('point', 0.0001)
+
+                                            # Calculate pips
+                                            original_entry = position.get('entry_price', 0)
+                                            original_current = original_pos.get('price_current', 0)
+                                            original_type = position.get('type')
+
+                                            if original_type == 'buy':
+                                                original_pips = (original_current - original_entry) / pip_value
+                                            else:
+                                                original_pips = (original_entry - original_current) / pip_value
+
+                                            hedge_entry = hedge_pos.get('price_open', 0)
+                                            hedge_current = hedge_pos.get('price_current', 0)
+                                            hedge_type = hedge_info.get('type')
+
+                                            if hedge_type == 'buy':
+                                                hedge_pips = (hedge_entry - hedge_current) / pip_value
+                                            else:
+                                                hedge_pips = (hedge_current - hedge_entry) / pip_value
+
+                                            self.ml_logger.log_hedge_dca(
+                                                original_ticket=original_ticket,
+                                                hedge_ticket=hedge_ticket,
+                                                symbol=symbol,
+                                                hedge_dca_ticket=ticket,
+                                                level=hedge_dca_levels[-1].get('level', 0),
+                                                volume=volume,
+                                                hedge_pips_underwater=hedge_pips,
+                                                original_pips=original_pips,
+                                                hedge_type=hedge_type,
+                                                dca_type=order_type,
+                                                m15_confirmed=True  # Always true if we got here (M15 check passed)
+                                            )
                                 break
                 self.stats['dca_levels_added'] += 1
             else:
@@ -1580,6 +1629,54 @@ class ConfluenceStrategy:
                         print(f"   [OK] Closed {pos_info['type']} #{ticket} ({close_percent*100:.0f}% = {close_volume:.2f} lots)")
                     else:
                         print(f"   [ERROR] Failed to partially close #{ticket}")
+
+        # ML LOGGING: Log hedge partial close event
+        if self.ml_logger and closed_count > 0:
+            # Get final data for logging
+            original_ticket = action['original_ticket']
+            if original_ticket in self.recovery_manager.tracked_positions:
+                position = self.recovery_manager.tracked_positions[original_ticket]
+                all_positions_now = self.mt5.get_positions()
+
+                # Find original position
+                original_pos = None
+                for pos in all_positions_now:
+                    if pos.get('ticket') == original_ticket:
+                        original_pos = pos
+                        break
+
+                if original_pos:
+                    symbol_info = self.mt5.get_symbol_info(symbol)
+                    pip_value = symbol_info.get('point', 0.0001)
+
+                    # Calculate original pips
+                    original_entry = position.get('entry_price', 0)
+                    original_current = original_pos.get('price_current', 0)
+                    original_type = position.get('type')
+
+                    if original_type == 'buy':
+                        original_pips = (original_current - original_entry) / pip_value
+                    else:
+                        original_pips = (original_entry - original_current) / pip_value
+
+                    # Get hedge profit (if still exists, else 0)
+                    hedge_profit = 0
+                    if hedge_pos:
+                        hedge_profit = hedge_pos.get('profit', 0)
+
+                    hedge_dca_count = len(hedge_dca_levels)
+
+                    self.ml_logger.log_hedge_partial_close(
+                        original_ticket=original_ticket,
+                        hedge_ticket=hedge_ticket,
+                        symbol=symbol,
+                        close_percent=close_percent,
+                        reason=reason,
+                        original_pips=original_pips,
+                        hedge_profit=hedge_profit,
+                        positions_closed=closed_count,
+                        hedge_dca_count=hedge_dca_count
+                    )
 
         print(f"{'='*70}")
         print(f"   Closed: {closed_count}/{len(positions_to_close)} positions")
