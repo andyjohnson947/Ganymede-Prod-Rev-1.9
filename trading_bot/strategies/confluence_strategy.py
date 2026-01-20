@@ -1471,6 +1471,8 @@ class ConfluenceStrategy:
                                 if hedge_dca_levels and hedge_dca_levels[-1].get('pending'):
                                     hedge_dca_levels[-1]['pending'] = False
                                     hedge_dca_levels[-1]['ticket'] = ticket
+                                    # CRITICAL: Save updated list back to hedge_info
+                                    hedge_info['dca_levels'] = hedge_dca_levels
                                     print(f"   Hedge DCA {ticket} linked to hedge {hedge_ticket} (helps ORIGINAL recovery)")
 
                                     # ML LOGGING: Log hedge DCA event
