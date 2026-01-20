@@ -242,7 +242,7 @@ USE_FIXED_LOT_SIZE = True
 MAX_TOTAL_LOTS = 15.0  # AGGRESSIVE: Increased from 5.04 to accommodate larger recovery stacks
 
 # Maximum drawdown before stopping
-MAX_DRAWDOWN_PERCENT = 10.0
+MAX_DRAWDOWN_PERCENT = 25.0  # Updated from 10.0 to 25.0 per user request
 
 # Stop loss (if used)
 STOP_LOSS_PIPS = None  # EA appears to not use hard stops

@@ -559,7 +559,7 @@ class ConfluenceStrategy:
             # Get symbol info (needed for various checks)
             current_price = position['price_current']
             symbol_info = self.mt5.get_symbol_info(symbol)
-            pip_value = symbol_info.get('point', 0.0001)
+            pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
 
             # PC1/PC2/TRAILING STOP: ONLY for profitable ORIGINAL positions
             # NOT for recovery orders (grid/DCA/hedge) or positions in active recovery
@@ -746,7 +746,7 @@ class ConfluenceStrategy:
                     # Check if stop moved and log the update
                     new_stop = tracked_pos.get('trailing_stop_price', 0)
                     if new_stop != old_stop and self.ml_logger:
-                        pip_value = symbol_info.get('point', 0.0001)
+                        pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
                         pips_moved = abs(new_stop - old_stop) / (pip_value * 10)
                         self.ml_logger.log_trailing_update(
                             ticket=ticket,
@@ -994,7 +994,7 @@ class ConfluenceStrategy:
                         entry_price = position['price_open']
                         current_price = position['price_current']
                         symbol_info = self.mt5.get_symbol_info(symbol)
-                        pip_value = symbol_info.get('point', 0.0001)
+                        pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
 
                         pos_type = 'buy' if position['type'] == 0 else 'sell'
                         if pos_type == 'buy':
@@ -1354,11 +1354,21 @@ class ConfluenceStrategy:
                 self.stats['trades_opened'] += 1
                 print(f"[OK] Trade #{i+1} opened: Ticket {ticket}")
 
-                # Start tracking for recovery
+                # Get actual fill price from MT5 (CRITICAL: Don't use signal price)
+                actual_entry_price = price  # Default to signal price as fallback
+                all_positions = self.mt5.get_positions()
+                for pos in all_positions:
+                    if pos['ticket'] == ticket:
+                        actual_entry_price = pos['price_open']
+                        slippage_pips = abs(actual_entry_price - price) * 10000
+                        print(f"[ENTRY] Signal: {price:.5f}, Fill: {actual_entry_price:.5f}, Slippage: {slippage_pips:.1f} pips")
+                        break
+
+                # Start tracking for recovery with ACTUAL fill price
                 self.recovery_manager.track_position(
                     ticket=ticket,
                     symbol=symbol,
-                    entry_price=price,
+                    entry_price=actual_entry_price,
                     position_type=direction,
                     volume=volume
                 )
@@ -1439,6 +1449,14 @@ class ConfluenceStrategy:
             ticket = None
 
         if ticket:
+            # Get actual fill price from MT5 (CRITICAL: Don't use calculated price)
+            actual_entry_price = action.get('price', 0)  # Default to calculated price as fallback
+            all_positions = self.mt5.get_positions()
+            for pos in all_positions:
+                if pos['ticket'] == ticket:
+                    actual_entry_price = pos['price_open']
+                    break
+
             # Grid trades get tracked with LIMITED recovery (DCA/Hedge YES, more Grids NO)
             # Hedge/DCA/Hedge_DCA trades link to original parent
             if action_type == 'grid':
@@ -1446,7 +1464,7 @@ class ConfluenceStrategy:
                 self.recovery_manager.track_position(
                     ticket=ticket,
                     symbol=symbol,
-                    entry_price=action.get('price', 0),
+                    entry_price=actual_entry_price,
                     position_type=order_type,
                     volume=volume,
                     is_grid_child=True  # Prevents more grids (stops cascade)
@@ -1489,7 +1507,7 @@ class ConfluenceStrategy:
 
                                         if original_pos and hedge_pos:
                                             symbol_info = self.mt5.get_symbol_info(symbol)
-                                            pip_value = symbol_info.get('point', 0.0001)
+                                            pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
 
                                             # Calculate pips
                                             original_entry = position.get('entry_price', 0)
@@ -1649,7 +1667,7 @@ class ConfluenceStrategy:
 
                 if original_pos:
                     symbol_info = self.mt5.get_symbol_info(symbol)
-                    pip_value = symbol_info.get('point', 0.0001)
+                    pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
 
                     # Calculate original pips
                     original_entry = position.get('entry_price', 0)
