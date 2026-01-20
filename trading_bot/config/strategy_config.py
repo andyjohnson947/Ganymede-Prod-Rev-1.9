@@ -230,7 +230,7 @@ BASE_LOT_SIZE = 0.04  # Updated to 0.04 with partial close strategy
 # Number of initial trades to open per signal
 # Opens multiple separate positions instead of one large position
 # Example: INITIAL_TRADE_COUNT = 2 -> Opens 2 separate trades with BASE_LOT_SIZE each
-INITIAL_TRADE_COUNT = 1  # DEFAULT: 1 (single trade)
+INITIAL_TRADE_COUNT = 2  # Set to 2 per user request
 
 # Risk per trade (if using dynamic position sizing)
 RISK_PERCENT = 1.0
@@ -242,7 +242,7 @@ USE_FIXED_LOT_SIZE = True
 MAX_TOTAL_LOTS = 15.0  # AGGRESSIVE: Increased from 5.04 to accommodate larger recovery stacks
 
 # Maximum drawdown before stopping
-MAX_DRAWDOWN_PERCENT = 10.0
+MAX_DRAWDOWN_PERCENT = 25.0  # Updated from 10.0 to 25.0 per user request
 
 # Stop loss (if used)
 STOP_LOSS_PIPS = None  # EA appears to not use hard stops
