@@ -64,7 +64,7 @@ class ConfluenceStrategy:
         self.signal_detector = SignalDetector(ml_logger=self.ml_logger, debug=self.debug)
         if self.debug:
             print("[DEBUG] Creating RecoveryManager...", flush=True)
-        self.recovery_manager = RecoveryManager(ml_logger=self.ml_logger)
+        self.recovery_manager = RecoveryManager(mt5_manager=self.mt5, ml_logger=self.ml_logger)
         if self.debug:
             print("[DEBUG] Creating RiskCalculator...", flush=True)
         self.risk_calculator = RiskCalculator()
