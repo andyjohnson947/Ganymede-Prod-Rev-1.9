@@ -90,6 +90,9 @@ class ConfluenceStrategy:
         # Crash recovery tracking
         self.recovery_stacks_reconstructed = False
 
+        # Periodic reconciliation tracking
+        self.last_reconcile_time = None
+
         # Statistics
         self.stats = {
             'signals_detected': 0,
@@ -476,6 +479,16 @@ class ConfluenceStrategy:
         all_positions = self.mt5.get_positions()
         if len(all_positions) > 0:
             self.recovery_manager.reconstruct_recovery_stacks(all_positions, silent=True)
+
+        # PERIODIC RECONCILIATION: Check tracked vs MT5 positions every 30 minutes
+        # Detects and auto-corrects state drift between bot and MT5
+        current_time = get_current_time()
+        if self.last_reconcile_time is None or (current_time - self.last_reconcile_time).total_seconds() >= 1800:
+            if len(all_positions) > 0:
+                reconcile_stats = self.recovery_manager.reconcile_with_mt5(all_positions, silent=True)
+                if reconcile_stats['discrepancies_found'] > 0:
+                    logger.warning(f"[RECONCILE] Found {reconcile_stats['discrepancies_found']} discrepancies, auto-corrected {reconcile_stats['auto_corrected']}")
+                self.last_reconcile_time = current_time
 
         # CASCADE PROTECTION: Check total unrealized loss across ALL open positions
         # Prevents trending markets from wiping out account before per-stack stops trigger

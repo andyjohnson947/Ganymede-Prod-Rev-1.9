@@ -41,6 +41,21 @@ class SignalDetector:
         self.htf_levels = HTFLevels()
         self.ml_logger = ml_logger
 
+        # ADDED: Load ML-optimized weights if available (overrides default CONFLUENCE_WEIGHTS)
+        self.confluence_weights = CONFLUENCE_WEIGHTS.copy()  # Start with defaults
+        try:
+            from ml_system.weights_optimizer import load_optimized_weights
+            optimized = load_optimized_weights()
+            if optimized:
+                # Merge optimized weights (override matching factors, keep others)
+                self.confluence_weights.update(optimized)
+                print(f"[ML FEEDBACK] Loaded {len(optimized)} optimized confluence weights")
+            else:
+                print("[ML FEEDBACK] No optimized weights found, using defaults")
+        except Exception as e:
+            print(f"[ML FEEDBACK] Failed to load optimized weights: {e}")
+            # Use defaults on error
+
     def detect_fair_value_gaps(self, data: pd.DataFrame, price: float, tolerance_pct: float = 0.003) -> Dict:
         """
         Detect Fair Value Gaps (FVGs) near current price.
@@ -157,14 +172,14 @@ class SignalDetector:
 
         # Check VWAP bands
         if vwap_signals['in_band_1']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('vwap_band_1', 1)
+            signal['confluence_score'] += self.confluence_weights.get('vwap_band_1', 1)
             signal['factors'].append('VWAP Band 1')
             # MEAN REVERSION LOGIC: Buy when price is BELOW VWAP (expecting reversion UP)
             #                       Sell when price is ABOVE VWAP (expecting reversion DOWN)
             signal['direction'] = 'buy' if vwap_signals['direction'] == 'below' else 'sell'
 
         elif vwap_signals['in_band_2']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('vwap_band_2', 1)
+            signal['confluence_score'] += self.confluence_weights.get('vwap_band_2', 1)
             signal['factors'].append('VWAP Band 2')
             # MEAN REVERSION LOGIC: Buy when price is BELOW VWAP (expecting reversion UP)
             #                       Sell when price is ABOVE VWAP (expecting reversion DOWN)
@@ -175,27 +190,27 @@ class SignalDetector:
         signal['vp_signals'] = vp_signals
 
         if vp_signals['at_poc']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('poc', 1)
+            signal['confluence_score'] += self.confluence_weights.get('poc', 1)
             signal['factors'].append('POC')
 
         if vp_signals['above_vah']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('above_vah', 1)
+            signal['confluence_score'] += self.confluence_weights.get('above_vah', 1)
             signal['factors'].append('Above VAH')
 
         if vp_signals['below_val']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('below_val', 1)
+            signal['confluence_score'] += self.confluence_weights.get('below_val', 1)
             signal['factors'].append('Below VAL')
 
         if vp_signals['at_lvn']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('lvn', 1)
+            signal['confluence_score'] += self.confluence_weights.get('lvn', 1)
             signal['factors'].append('Low Volume Node')
 
         if vp_signals['at_swing_high']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('swing_high', 1)
+            signal['confluence_score'] += self.confluence_weights.get('swing_high', 1)
             signal['factors'].append('Swing High')
 
         if vp_signals['at_swing_low']:
-            signal['confluence_score'] += CONFLUENCE_WEIGHTS.get('swing_low', 1)
+            signal['confluence_score'] += self.confluence_weights.get('swing_low', 1)
             signal['factors'].append('Swing Low')
 
         # 3. Check HTF levels (CRITICAL - highest weights)

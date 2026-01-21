@@ -366,6 +366,90 @@ class RecoveryManager:
 
         return cleared_count
 
+    def reconcile_with_mt5(self, mt5_positions: List[Dict], silent: bool = False) -> Dict:
+        """
+        Reconcile tracked positions with actual MT5 positions.
+        Detects discrepancies and optionally auto-corrects state.
+
+        Args:
+            mt5_positions: Current MT5 positions
+            silent: If True, suppress verbose logging
+
+        Returns:
+            Dict with reconciliation stats
+        """
+        stats = {
+            'checked': 0,
+            'discrepancies_found': 0,
+            'auto_corrected': 0,
+            'issues': []
+        }
+
+        # Get MT5 ticket set
+        mt5_tickets = {pos.get('ticket') for pos in mt5_positions}
+
+        # Check each tracked position
+        for ticket, tracked in list(self.tracked_positions.items()):
+            stats['checked'] += 1
+
+            # Check if position still exists in MT5
+            if ticket not in mt5_tickets:
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'position_closed',
+                    'ticket': ticket,
+                    'message': f"Position {ticket} is tracked but not in MT5"
+                })
+
+                # Auto-correct: Remove from tracking
+                logger.warning(f"[RECONCILE] Position {ticket} not in MT5, removing from tracking")
+                del self.tracked_positions[ticket]
+                stats['auto_corrected'] += 1
+                continue
+
+            # Find MT5 position
+            mt5_pos = next((p for p in mt5_positions if p.get('ticket') == ticket), None)
+            if not mt5_pos:
+                continue
+
+            # Check volume matches
+            mt5_volume = mt5_pos.get('volume', 0)
+            tracked_volume = tracked.get('initial_volume', 0)
+
+            if abs(mt5_volume - tracked_volume) > 0.001:  # Allow tiny floating point diff
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'volume_mismatch',
+                    'ticket': ticket,
+                    'tracked_volume': tracked_volume,
+                    'mt5_volume': mt5_volume
+                })
+                logger.warning(f"[RECONCILE] Volume mismatch for {ticket}: tracked {tracked_volume:.2f}, MT5 {mt5_volume:.2f}")
+
+            # Check entry price matches (within 10 pip tolerance for slippage)
+            mt5_entry = mt5_pos.get('price_open', 0)
+            tracked_entry = tracked.get('entry_price', 0)
+            pip_value = 0.0001
+
+            if abs(mt5_entry - tracked_entry) > (pip_value * 10):
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'entry_price_mismatch',
+                    'ticket': ticket,
+                    'tracked_entry': tracked_entry,
+                    'mt5_entry': mt5_entry
+                })
+
+                # Auto-correct: Update to MT5 entry price (MT5 is source of truth)
+                logger.warning(f"[RECONCILE] Entry price mismatch for {ticket}, updating to MT5 value: {mt5_entry:.5f}")
+                tracked['entry_price'] = mt5_entry
+                stats['auto_corrected'] += 1
+
+        if not silent:
+            logger.info(f"[RECONCILE] Checked {stats['checked']} positions, found {stats['discrepancies_found']} discrepancies, auto-corrected {stats['auto_corrected']}")
+
+        return stats
+
     def check_max_lots_limit(self, additional_volume: float, mt5_positions: List[Dict]) -> bool:
         """
         Check if adding additional_volume would exceed MAX_TOTAL_LOTS limit.
@@ -1354,6 +1438,22 @@ class RecoveryManager:
                 logger.info(f"   Status: PENDING (waiting for ticket assignment)")
                 logger.info(f"   Cooldown: 2 minutes from now")
 
+                # ADDED: Log recovery trigger for analysis
+                if self.ml_logger:
+                    # Calculate time since entry
+                    time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                    self.ml_logger.log_recovery_trigger(
+                        recovery_type='grid',
+                        original_ticket=ticket,
+                        symbol=position['symbol'],
+                        pips_underwater=pips_in_profit,  # Positive for profitable (grid on profit)
+                        time_since_entry_minutes=time_since_entry,
+                        current_adx=None,  # Not available in grid check
+                        recovery_level=len(position['grid_levels']),
+                        volume=grid_volume,
+                        trigger_threshold=grid_spacing * levels_added
+                    )
+
                 # ADDED: Check max lots limit before returning action
                 mt5_positions = self.mt5.get_positions()
                 if not self.check_max_lots_limit(grid_volume, mt5_positions):
@@ -1606,6 +1706,23 @@ class RecoveryManager:
                 print(f"   Triggered at: {pips_underwater:.1f} pips underwater")
                 print(f"   Status: PENDING (waiting for ticket assignment)")
                 print(f"   Cooldown: 5 minutes from now")
+
+                # ADDED: Log recovery trigger for analysis
+                if self.ml_logger:
+                    # Calculate time since entry
+                    time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                    # Get current ADX if available (hedge doesn't receive h1_data, so we can't get it here)
+                    self.ml_logger.log_recovery_trigger(
+                        recovery_type='hedge',
+                        original_ticket=ticket,
+                        symbol=position['symbol'],
+                        pips_underwater=-pips_underwater,  # Negative for underwater
+                        time_since_entry_minutes=time_since_entry,
+                        current_adx=None,  # Not available in hedge check
+                        recovery_level=len(position['hedge_tickets']),
+                        volume=hedge_volume,
+                        trigger_threshold=hedge_trigger
+                    )
 
                 # ADDED: Check max lots limit before returning action
                 mt5_positions = self.mt5.get_positions()
@@ -1868,6 +1985,24 @@ class RecoveryManager:
             print(f"   Price: {current_price:.5f}")
             print(f"   Volume: {dca_volume:.2f} (multiplier: {dca_multiplier}x)")
             print(f"   Total volume now: {position['total_volume']:.2f}")
+
+            # ADDED: Log recovery trigger for analysis
+            if self.ml_logger:
+                # Calculate time since entry
+                time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                # Get current ADX if available
+                current_adx = h1_data.iloc[-1]['adx'] if h1_data is not None and 'adx' in h1_data.columns and len(h1_data) > 0 else None
+                self.ml_logger.log_recovery_trigger(
+                    recovery_type='dca',
+                    original_ticket=ticket,
+                    symbol=position['symbol'],
+                    pips_underwater=-pips_moved,  # Negative for underwater
+                    time_since_entry_minutes=time_since_entry,
+                    current_adx=current_adx,
+                    recovery_level=len(position['dca_levels']),
+                    volume=dca_volume,
+                    trigger_threshold=dca_trigger
+                )
 
             # ADDED: Check max lots limit before returning action
             mt5_positions = self.mt5.get_positions()
@@ -3046,6 +3181,28 @@ class RecoveryManager:
                 continue  # Can't calculate recovery without trigger pips
 
             # Track if we already did partial closes for this hedge
+            partial_50_done = hedge_info.get('partial_50_closed', False)
+            partial_75_done = hedge_info.get('partial_75_closed', False)
+            partial_100_done = hedge_info.get('partial_100_closed', False)
+
+            # FIXED: Reset flags if recovery reverses (drops below threshold)
+            # This allows hedge to scale back up if original drops again
+            if recovery_pct < 0.45 and partial_50_done:
+                # Dropped below 45% (5% buffer below 50% threshold)
+                hedge_info['partial_50_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_50_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            if recovery_pct < 0.70 and partial_75_done:
+                # Dropped below 70% (5% buffer below 75% threshold)
+                hedge_info['partial_75_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_75_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            if recovery_pct < 0.95 and partial_100_done:
+                # Dropped below 95% (5% buffer below 100% threshold)
+                hedge_info['partial_100_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_100_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            # Re-read flags after potential reset
             partial_50_done = hedge_info.get('partial_50_closed', False)
             partial_75_done = hedge_info.get('partial_75_closed', False)
             partial_100_done = hedge_info.get('partial_100_closed', False)
