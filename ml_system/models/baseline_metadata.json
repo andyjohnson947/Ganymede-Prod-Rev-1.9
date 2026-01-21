@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-01-21T05:03:38.316753",
+  "timestamp": "2026-01-21T05:14:56.681672",
   "model_type": "RandomForestClassifier",
   "n_estimators": 100,
   "max_depth": 10,
-  "training_samples": 18,
+  "training_samples": 19,
   "validation_samples": 5,
   "features": 88,
   "train_accuracy": 1.0,
-  "val_accuracy": 0.8,
+  "val_accuracy": 1.0,
   "val_roc_auc": 1.0
 }
