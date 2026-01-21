@@ -366,6 +366,90 @@ class RecoveryManager:
 
         return cleared_count
 
+    def reconcile_with_mt5(self, mt5_positions: List[Dict], silent: bool = False) -> Dict:
+        """
+        Reconcile tracked positions with actual MT5 positions.
+        Detects discrepancies and optionally auto-corrects state.
+
+        Args:
+            mt5_positions: Current MT5 positions
+            silent: If True, suppress verbose logging
+
+        Returns:
+            Dict with reconciliation stats
+        """
+        stats = {
+            'checked': 0,
+            'discrepancies_found': 0,
+            'auto_corrected': 0,
+            'issues': []
+        }
+
+        # Get MT5 ticket set
+        mt5_tickets = {pos.get('ticket') for pos in mt5_positions}
+
+        # Check each tracked position
+        for ticket, tracked in list(self.tracked_positions.items()):
+            stats['checked'] += 1
+
+            # Check if position still exists in MT5
+            if ticket not in mt5_tickets:
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'position_closed',
+                    'ticket': ticket,
+                    'message': f"Position {ticket} is tracked but not in MT5"
+                })
+
+                # Auto-correct: Remove from tracking
+                logger.warning(f"[RECONCILE] Position {ticket} not in MT5, removing from tracking")
+                del self.tracked_positions[ticket]
+                stats['auto_corrected'] += 1
+                continue
+
+            # Find MT5 position
+            mt5_pos = next((p for p in mt5_positions if p.get('ticket') == ticket), None)
+            if not mt5_pos:
+                continue
+
+            # Check volume matches
+            mt5_volume = mt5_pos.get('volume', 0)
+            tracked_volume = tracked.get('initial_volume', 0)
+
+            if abs(mt5_volume - tracked_volume) > 0.001:  # Allow tiny floating point diff
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'volume_mismatch',
+                    'ticket': ticket,
+                    'tracked_volume': tracked_volume,
+                    'mt5_volume': mt5_volume
+                })
+                logger.warning(f"[RECONCILE] Volume mismatch for {ticket}: tracked {tracked_volume:.2f}, MT5 {mt5_volume:.2f}")
+
+            # Check entry price matches (within 10 pip tolerance for slippage)
+            mt5_entry = mt5_pos.get('price_open', 0)
+            tracked_entry = tracked.get('entry_price', 0)
+            pip_value = 0.0001
+
+            if abs(mt5_entry - tracked_entry) > (pip_value * 10):
+                stats['discrepancies_found'] += 1
+                stats['issues'].append({
+                    'type': 'entry_price_mismatch',
+                    'ticket': ticket,
+                    'tracked_entry': tracked_entry,
+                    'mt5_entry': mt5_entry
+                })
+
+                # Auto-correct: Update to MT5 entry price (MT5 is source of truth)
+                logger.warning(f"[RECONCILE] Entry price mismatch for {ticket}, updating to MT5 value: {mt5_entry:.5f}")
+                tracked['entry_price'] = mt5_entry
+                stats['auto_corrected'] += 1
+
+        if not silent:
+            logger.info(f"[RECONCILE] Checked {stats['checked']} positions, found {stats['discrepancies_found']} discrepancies, auto-corrected {stats['auto_corrected']}")
+
+        return stats
+
     def check_max_lots_limit(self, additional_volume: float, mt5_positions: List[Dict]) -> bool:
         """
         Check if adding additional_volume would exceed MAX_TOTAL_LOTS limit.
