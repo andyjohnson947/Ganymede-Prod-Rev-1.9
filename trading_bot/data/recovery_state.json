@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-21T04:48:08.471349",
+  "timestamp": "2026-01-21T04:58:20.550646",
   "tracked_positions": {
     "54755086837": {
       "ticket": 54755086837,
@@ -2822,5 +2822,5 @@
     "EURUSD": false,
     "GBPUSD": false
   },
-  "last_block_update": "2026-01-21T04:49:08.765495"
+  "last_block_update": "2026-01-21T04:58:24.410314"
 }
