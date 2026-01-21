@@ -1,23 +1,45 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-21T05:54:11.558882",
+  "timestamp": "2026-01-21T08:10:53.014182",
   "tracked_positions": {
     "54757408294": {
       "ticket": 54757408294,
       "symbol": "EURUSD",
       "entry_price": 1.1706,
       "type": "sell",
-      "initial_volume": 0.04,
+      "initial_volume": 0.03,
       "grid_levels": [],
-      "hedge_tickets": [],
-      "dca_levels": [],
-      "total_volume": 0.04,
-      "max_underwater_pips": 15.999999999993795,
-      "recovery_active": false,
+      "hedge_tickets": [
+        {
+          "ticket": 54759421905,
+          "type": "buy",
+          "volume": 0.04,
+          "trigger_pips": 0,
+          "time": "2026-01-21T09:39:57",
+          "dca_levels": []
+        }
+      ],
+      "dca_levels": [
+        {
+          "ticket": 54758175333,
+          "level": 1,
+          "volume": 0.04,
+          "time": "2026-01-21T08:20:49"
+        },
+        {
+          "ticket": 54758937560,
+          "level": 2,
+          "volume": 0.05,
+          "time": "2026-01-21T09:11:49"
+        }
+      ],
+      "total_volume": 0.12,
+      "max_underwater_pips": 228.9999999999903,
+      "recovery_active": true,
       "open_time": "2026-01-21T10:14:54.222996+00:00",
-      "last_hedge_time": null,
+      "last_hedge_time": "2026-01-21T12:39:52.590130+00:00",
       "last_grid_time": null,
-      "last_dca_time": null,
+      "last_dca_time": "2026-01-21T12:11:44.237096+00:00",
       "is_grid_child": false,
       "partial_1_closed": true,
       "partial_2_closed": false,
@@ -26,6 +48,31 @@
       "trailing_stop_distance_pips": 0,
       "trailing_stop_price": 0.0,
       "highest_profit_price": 1.1706
+    },
+    "54758175333": {
+      "ticket": 54758175333,
+      "symbol": "EURUSD",
+      "entry_price": 1.17093,
+      "type": "sell",
+      "initial_volume": 0.04,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [
+        {
+          "price": 1.17192,
+          "volume": 0.05,
+          "level": 1,
+          "time": "2026-01-21T12:12:44.569654+00:00"
+        }
+      ],
+      "total_volume": 0.09,
+      "max_underwater_pips": 268.00000000000153,
+      "recovery_active": true,
+      "open_time": "2026-01-21T08:20:49",
+      "is_orphaned": false,
+      "last_hedge_time": "2026-01-21T13:06:52.961310+00:00",
+      "last_grid_time": null,
+      "last_dca_time": "2026-01-21T12:12:44.569654+00:00"
     }
   },
   "archived_positions": [
