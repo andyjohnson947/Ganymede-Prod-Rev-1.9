@@ -1354,6 +1354,22 @@ class RecoveryManager:
                 logger.info(f"   Status: PENDING (waiting for ticket assignment)")
                 logger.info(f"   Cooldown: 2 minutes from now")
 
+                # ADDED: Log recovery trigger for analysis
+                if self.ml_logger:
+                    # Calculate time since entry
+                    time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                    self.ml_logger.log_recovery_trigger(
+                        recovery_type='grid',
+                        original_ticket=ticket,
+                        symbol=position['symbol'],
+                        pips_underwater=pips_in_profit,  # Positive for profitable (grid on profit)
+                        time_since_entry_minutes=time_since_entry,
+                        current_adx=None,  # Not available in grid check
+                        recovery_level=len(position['grid_levels']),
+                        volume=grid_volume,
+                        trigger_threshold=grid_spacing * levels_added
+                    )
+
                 # ADDED: Check max lots limit before returning action
                 mt5_positions = self.mt5.get_positions()
                 if not self.check_max_lots_limit(grid_volume, mt5_positions):
@@ -1606,6 +1622,23 @@ class RecoveryManager:
                 print(f"   Triggered at: {pips_underwater:.1f} pips underwater")
                 print(f"   Status: PENDING (waiting for ticket assignment)")
                 print(f"   Cooldown: 5 minutes from now")
+
+                # ADDED: Log recovery trigger for analysis
+                if self.ml_logger:
+                    # Calculate time since entry
+                    time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                    # Get current ADX if available (hedge doesn't receive h1_data, so we can't get it here)
+                    self.ml_logger.log_recovery_trigger(
+                        recovery_type='hedge',
+                        original_ticket=ticket,
+                        symbol=position['symbol'],
+                        pips_underwater=-pips_underwater,  # Negative for underwater
+                        time_since_entry_minutes=time_since_entry,
+                        current_adx=None,  # Not available in hedge check
+                        recovery_level=len(position['hedge_tickets']),
+                        volume=hedge_volume,
+                        trigger_threshold=hedge_trigger
+                    )
 
                 # ADDED: Check max lots limit before returning action
                 mt5_positions = self.mt5.get_positions()
@@ -1868,6 +1901,24 @@ class RecoveryManager:
             print(f"   Price: {current_price:.5f}")
             print(f"   Volume: {dca_volume:.2f} (multiplier: {dca_multiplier}x)")
             print(f"   Total volume now: {position['total_volume']:.2f}")
+
+            # ADDED: Log recovery trigger for analysis
+            if self.ml_logger:
+                # Calculate time since entry
+                time_since_entry = (get_current_time() - position['open_time']).total_seconds() / 60.0
+                # Get current ADX if available
+                current_adx = h1_data.iloc[-1]['adx'] if h1_data is not None and 'adx' in h1_data.columns and len(h1_data) > 0 else None
+                self.ml_logger.log_recovery_trigger(
+                    recovery_type='dca',
+                    original_ticket=ticket,
+                    symbol=position['symbol'],
+                    pips_underwater=-pips_moved,  # Negative for underwater
+                    time_since_entry_minutes=time_since_entry,
+                    current_adx=current_adx,
+                    recovery_level=len(position['dca_levels']),
+                    volume=dca_volume,
+                    trigger_threshold=dca_trigger
+                )
 
             # ADDED: Check max lots limit before returning action
             mt5_positions = self.mt5.get_positions()
@@ -3046,6 +3097,28 @@ class RecoveryManager:
                 continue  # Can't calculate recovery without trigger pips
 
             # Track if we already did partial closes for this hedge
+            partial_50_done = hedge_info.get('partial_50_closed', False)
+            partial_75_done = hedge_info.get('partial_75_closed', False)
+            partial_100_done = hedge_info.get('partial_100_closed', False)
+
+            # FIXED: Reset flags if recovery reverses (drops below threshold)
+            # This allows hedge to scale back up if original drops again
+            if recovery_pct < 0.45 and partial_50_done:
+                # Dropped below 45% (5% buffer below 50% threshold)
+                hedge_info['partial_50_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_50_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            if recovery_pct < 0.70 and partial_75_done:
+                # Dropped below 70% (5% buffer below 75% threshold)
+                hedge_info['partial_75_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_75_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            if recovery_pct < 0.95 and partial_100_done:
+                # Dropped below 95% (5% buffer below 100% threshold)
+                hedge_info['partial_100_closed'] = False
+                logger.info(f"[HEDGE FLAGS] Reset partial_100_closed for hedge #{hedge_ticket} (recovery dropped to {recovery_pct*100:.0f}%)")
+
+            # Re-read flags after potential reset
             partial_50_done = hedge_info.get('partial_50_closed', False)
             partial_75_done = hedge_info.get('partial_75_closed', False)
             partial_100_done = hedge_info.get('partial_100_closed', False)
