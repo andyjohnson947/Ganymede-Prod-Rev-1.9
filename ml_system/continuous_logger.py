@@ -1597,6 +1597,50 @@ class ContinuousMLLogger:
         except Exception as e:
             print(f"[WARN] [LOGGER] Failed to log hedge partial close for {hedge_ticket}: {e}")
 
+    def log_recovery_trigger(self, recovery_type: str, original_ticket: int, symbol: str,
+                            pips_underwater: float, time_since_entry_minutes: float,
+                            current_adx: float = None, recovery_level: int = 1,
+                            volume: float = 0.0, trigger_threshold: float = 0.0):
+        """
+        Log when recovery (DCA/hedge/grid) is triggered with all relevant conditions.
+        Enables analysis of optimal trigger points and market conditions.
+
+        Args:
+            recovery_type: 'dca', 'hedge', 'grid', or 'hedge_dca'
+            original_ticket: Original position ticket
+            symbol: Trading symbol
+            pips_underwater: How many pips underwater (negative = losing)
+            time_since_entry_minutes: Minutes since position opened
+            current_adx: Current ADX value (if available)
+            recovery_level: Level number (DCA L1, L2, Grid L1, etc.)
+            volume: Volume of recovery order
+            trigger_threshold: Configured trigger threshold (e.g., 30 pips for DCA)
+        """
+        recovery_triggers_log = self.output_dir / "recovery_triggers.jsonl"
+
+        event_record = {
+            'event_type': 'recovery_trigger',
+            'timestamp': datetime.now().isoformat(),
+            'recovery_type': recovery_type,
+            'original_ticket': int(original_ticket),
+            'symbol': symbol,
+            'pips_underwater': float(pips_underwater),
+            'time_since_entry_minutes': float(time_since_entry_minutes),
+            'current_adx': float(current_adx) if current_adx is not None else None,
+            'recovery_level': int(recovery_level),
+            'volume': float(volume),
+            'trigger_threshold': float(trigger_threshold)
+        }
+
+        # Convert numpy types
+        event_record = convert_numpy_types(event_record)
+
+        try:
+            with open(recovery_triggers_log, 'a', encoding='utf-8', errors='ignore') as f:
+                f.write(json.dumps(event_record) + '\n')
+        except Exception as e:
+            print(f"[WARN] [LOGGER] Failed to log recovery trigger for {original_ticket}: {e}")
+
     def run(self, mt5_login: int, mt5_password: str, mt5_server: str, check_interval: int = 60):
         """
         Run continuous logging service

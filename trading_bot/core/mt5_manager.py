@@ -326,22 +326,60 @@ class MT5Manager:
         if tp:
             request["tp"] = tp
 
-        # Send order
-        result = mt5.order_send(request)
+        # ADDED: Retry logic with exponential backoff for transient errors
+        # Retry up to 3 times for network/server issues
+        max_retries = 3
+        retry_delays = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
 
-        if result is None:
-            print(f"[ERROR] Order send failed: {mt5.last_error()}")
-            return None
+        for attempt in range(max_retries):
+            # Send order
+            result = mt5.order_send(request)
 
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            print(f"[ERROR] Order failed: {result.comment}")
-            return None
+            if result is None:
+                error = mt5.last_error()
+                if attempt < max_retries - 1:
+                    print(f"[RETRY] Order send failed (attempt {attempt + 1}/{max_retries}): {error}")
+                    print(f"   Retrying in {retry_delays[attempt]}s...")
+                    import time
+                    time.sleep(retry_delays[attempt])
+                    continue
+                else:
+                    print(f"[ERROR] Order send failed after {max_retries} attempts: {error}")
+                    return None
 
-        order_mode_str = "LIMIT" if order_mode.lower() == 'limit' else "MARKET"
-        print(f"[OK] {order_mode_str} order placed: {order_type.upper()} {volume} {symbol} @ {price:.5f}")
-        print(f"   Ticket: {result.order}")
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                # Success!
+                order_mode_str = "LIMIT" if order_mode.lower() == 'limit' else "MARKET"
+                print(f"[OK] {order_mode_str} order placed: {order_type.upper()} {volume} {symbol} @ {price:.5f}")
+                print(f"   Ticket: {result.order}")
+                if attempt > 0:
+                    print(f"   (Succeeded on attempt {attempt + 1})")
+                return result.order
 
-        return result.order
+            # Check if error is retryable
+            retryable_codes = [
+                mt5.TRADE_RETCODE_REQUOTE,  # Requote
+                mt5.TRADE_RETCODE_PRICE_OFF,  # Invalid price
+                mt5.TRADE_RETCODE_TIMEOUT,  # Timeout
+                mt5.TRADE_RETCODE_CONNECTION,  # Connection error
+                mt5.TRADE_RETCODE_PRICE_CHANGED,  # Price changed
+                mt5.TRADE_RETCODE_NO_CONNECTION,  # No connection
+            ]
+
+            if result.retcode in retryable_codes and attempt < max_retries - 1:
+                print(f"[RETRY] Order failed with retryable error (attempt {attempt + 1}/{max_retries}): {result.comment}")
+                print(f"   Retrying in {retry_delays[attempt]}s...")
+                import time
+                time.sleep(retry_delays[attempt])
+                continue
+            else:
+                # Non-retryable error or max retries reached
+                print(f"[ERROR] Order failed: {result.comment}")
+                if attempt > 0:
+                    print(f"   (Failed after {attempt + 1} attempts)")
+                return None
+
+        return None
 
     def close_position(self, ticket: int) -> bool:
         """
