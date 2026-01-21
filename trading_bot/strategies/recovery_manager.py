@@ -256,7 +256,8 @@ class RecoveryManager:
         position_type: str,
         volume: float,
         is_grid_child: bool = False,
-        is_recovery_order: bool = False
+        is_recovery_order: bool = False,
+        open_adx: float = 0.0
     ):
         """
         Start tracking a position for recovery
@@ -269,6 +270,7 @@ class RecoveryManager:
             volume: Initial lot size
             is_grid_child: If True, this is a Grid daughter (DCA/Hedge YES, more Grids NO)
             is_recovery_order: If True, this is a DCA/Hedge/Grid (NO further recovery allowed)
+            open_adx: ADX value at position open time (for conditional recovery blocking)
         """
         self.tracked_positions[ticket] = {
             'ticket': ticket,
@@ -283,6 +285,7 @@ class RecoveryManager:
             'max_underwater_pips': 0,
             'recovery_active': False,
             'open_time': get_current_time(),  # Track when position opened
+            'open_adx': open_adx,  # Track ADX at open (for conditional recovery blocking)
             'last_hedge_time': None,  # Track last hedge time for cooldown
             'last_grid_time': None,  # Track last grid time for cooldown
             'last_dca_time': None,  # Track last DCA time for cooldown
@@ -1369,6 +1372,14 @@ class RecoveryManager:
                 logger.debug(f"[GRID BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
                 return None
 
+            # ADX-CONDITIONAL RECOVERY BLOCKING
+            # If position opened during trending market (ADX > 30), NO recovery allowed
+            # Hard SL at -50 pips already set, let it hit cleanly
+            open_adx = position.get('open_adx', 0.0)
+            if open_adx > 30:
+                logger.info(f"[GRID BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
+                return None
+
             # ENHANCED LOGGING: Log current grid state for debugging
             logger.debug(f"[GRID CHECK] Position {ticket} ({symbol}):")
             logger.debug(f"  Current grid count: {len(position['grid_levels'])}")
@@ -1602,6 +1613,14 @@ class RecoveryManager:
             # This is THE FIX for the cascade bug
             if position.get('is_recovery_order', False):
                 logger.debug(f"[HEDGE BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
+                return None
+
+            # ADX-CONDITIONAL RECOVERY BLOCKING
+            # If position opened during trending market (ADX > 30), NO recovery allowed
+            # Hard SL at -50 pips already set, let it hit cleanly
+            open_adx = position.get('open_adx', 0.0)
+            if open_adx > 30:
+                logger.info(f"[HEDGE BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
                 return None
 
             # ENHANCED LOGGING: Log current hedge state for debugging
@@ -1863,6 +1882,14 @@ class RecoveryManager:
         # This is THE FIX for the cascade bug
         if position.get('is_recovery_order', False):
             logger.debug(f"[DCA BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
+            return None
+
+        # ADX-CONDITIONAL RECOVERY BLOCKING
+        # If position opened during trending market (ADX > 30), NO recovery allowed
+        # Hard SL at -50 pips already set, let it hit cleanly
+        open_adx = position.get('open_adx', 0.0)
+        if open_adx > 30:
+            logger.info(f"[DCA BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
             return None
 
         # CRITICAL: Prevent DCA-on-hedge and DCA-on-DCA cascades

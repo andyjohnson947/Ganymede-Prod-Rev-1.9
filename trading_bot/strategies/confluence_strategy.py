@@ -1228,6 +1228,13 @@ class ConfluenceStrategy:
         # Signal detected!
         self.stats['signals_detected'] += 1
 
+        # CRITICAL: Calculate ADX for conditional SL logic
+        # If ADX > 30 (trending), apply hard SL at -50 pips
+        from indicators.adx import calculate_adx
+        h1_with_adx = calculate_adx(h1_data.copy(), period=14)
+        current_adx = h1_with_adx['adx'].iloc[-1] if 'adx' in h1_with_adx.columns and len(h1_with_adx) > 0 else 0.0
+        signal['adx'] = current_adx  # Add ADX to signal for use in _execute_signal
+
         print()
         print(f"Signal: {signal.get('strategy_type', 'unknown').upper()}")
         print(self.signal_detector.get_signal_summary(signal))
@@ -1357,6 +1364,31 @@ class ConfluenceStrategy:
             print(f"[ERROR] Cannot open {INITIAL_TRADE_COUNT} trades - would exceed MAX_TOTAL_LOTS limit")
             return
 
+        # ADX-CONDITIONAL HARD STOP LOGIC
+        # If ADX > 30 (trending market), apply hard SL at -50 pips to cut losses fast
+        # If ADX <= 30 (ranging/moderate), allow recovery system to work (no hard SL)
+        current_adx = signal.get('adx', 0.0)
+        hard_sl = None
+
+        if current_adx > 30:
+            # Calculate -50 pip stop loss
+            symbol_info = self.mt5.get_symbol_info(symbol)
+            point = symbol_info.get('point', 0.0001)
+            pip_distance = 50 * point  # 50 pips
+
+            # Get current price for SL calculation
+            tick = self.mt5.get_symbol_tick(symbol)
+            if tick:
+                current_price = tick.get('bid') if direction == 'sell' else tick.get('ask')
+                if direction == 'buy':
+                    hard_sl = current_price - pip_distance  # SL below entry for BUY
+                else:
+                    hard_sl = current_price + pip_distance  # SL above entry for SELL
+
+                print(f" ADX TRENDING MARKET DETECTED (ADX: {current_adx:.1f})")
+                print(f"   Applying HARD SL at -50 pips: {hard_sl:.5f}")
+                print(f"   Recovery (DCA/Hedge/Grid) will be BLOCKED for this position")
+
         # Place order(s) - open multiple trades if INITIAL_TRADE_COUNT > 1
         # Include strategy type in comment for ML analysis
         # VWAP = Mean reversion to VWAP/levels, BREAKOUT = Momentum through levels
@@ -1371,7 +1403,7 @@ class ConfluenceStrategy:
                 symbol=symbol,
                 order_type=direction,
                 volume=volume,
-                sl=None,  # EA doesn't use hard stops
+                sl=hard_sl,  # ADX > 30: -50 pips hard SL, ADX <= 30: None (recovery allowed)
                 tp=None,  # Using VWAP reversion instead
                 comment=trade_comment
             )
@@ -1392,12 +1424,16 @@ class ConfluenceStrategy:
                         break
 
                 # Start tracking for recovery with ACTUAL fill price
+                # Pass ADX to determine if recovery is allowed
                 self.recovery_manager.track_position(
                     ticket=ticket,
                     symbol=symbol,
                     entry_price=actual_entry_price,
                     position_type=direction,
-                    volume=volume
+                    volume=volume,
+                    is_grid_child=False,
+                    is_recovery_order=False,
+                    open_adx=current_adx  # Store ADX at entry time
                 )
             else:
                 print(f"[ERROR] Failed to open trade #{i+1}")
