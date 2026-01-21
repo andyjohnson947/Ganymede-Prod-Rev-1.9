@@ -1340,6 +1340,13 @@ class ConfluenceStrategy:
         # Import INITIAL_TRADE_COUNT
         from config.strategy_config import INITIAL_TRADE_COUNT
 
+        # ADDED: Check if opening INITIAL_TRADE_COUNT positions would exceed max lots
+        total_volume_to_add = volume * INITIAL_TRADE_COUNT
+        all_positions = self.mt5.get_positions()
+        if not self.recovery_manager.check_max_lots_limit(total_volume_to_add, all_positions):
+            print(f"[ERROR] Cannot open {INITIAL_TRADE_COUNT} trades - would exceed MAX_TOTAL_LOTS limit")
+            return
+
         # Place order(s) - open multiple trades if INITIAL_TRADE_COUNT > 1
         # Include strategy type in comment for ML analysis
         # VWAP = Mean reversion to VWAP/levels, BREAKOUT = Momentum through levels
