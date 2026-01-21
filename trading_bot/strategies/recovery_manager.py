@@ -255,7 +255,8 @@ class RecoveryManager:
         entry_price: float,
         position_type: str,
         volume: float,
-        is_grid_child: bool = False
+        is_grid_child: bool = False,
+        is_recovery_order: bool = False
     ):
         """
         Start tracking a position for recovery
@@ -267,6 +268,7 @@ class RecoveryManager:
             position_type: 'buy' or 'sell'
             volume: Initial lot size
             is_grid_child: If True, this is a Grid daughter (DCA/Hedge YES, more Grids NO)
+            is_recovery_order: If True, this is a DCA/Hedge/Grid (NO further recovery allowed)
         """
         self.tracked_positions[ticket] = {
             'ticket': ticket,
@@ -285,6 +287,7 @@ class RecoveryManager:
             'last_grid_time': None,  # Track last grid time for cooldown
             'last_dca_time': None,  # Track last DCA time for cooldown
             'is_grid_child': is_grid_child,  # Prevents grid spawning (stops cascade)
+            'is_recovery_order': is_recovery_order,  # Prevents ANY recovery on recovery orders
             # Partial profit tracking
             'partial_1_closed': False,
             'partial_2_closed': False,
@@ -599,6 +602,7 @@ class RecoveryManager:
                                 'is_orphaned': True,
                                 'orphan_source': 'grid',
                                 'is_grid_child': True,  # Grid orphans shouldn't spawn more grids
+                                'is_recovery_order': True,  # CRITICAL: No recovery-on-recovery
                             }
                             if not silent:
                                 print(f"[OK] Adopted orphaned Grid #{ticket} (parent closed)")
@@ -666,6 +670,7 @@ class RecoveryManager:
                                 'last_grid_time': None,
                                 'is_orphaned': True,
                                 'orphan_source': 'hedge',
+                                'is_recovery_order': True,  # CRITICAL: No recovery-on-recovery
                             }
                             if not silent:
                                 print(f"[OK] Adopted orphaned Hedge #{ticket} (parent closed)")
@@ -734,6 +739,7 @@ class RecoveryManager:
                                 'last_grid_time': None,
                                 'is_orphaned': True,
                                 'orphan_source': 'dca',
+                                'is_recovery_order': True,  # CRITICAL: No recovery-on-recovery
                             }
                             if not silent:
                                 print(f"[OK] Adopted orphaned DCA #{ticket} (parent closed)")
@@ -1356,6 +1362,13 @@ class RecoveryManager:
             position = self.tracked_positions[ticket]
             symbol = position['symbol']
 
+            # CRITICAL: Prevent recovery-on-recovery cascades (Grid-on-DCA, Grid-on-Hedge, etc)
+            # Recovery orders (DCA/Hedge/Grid) should NOT trigger their own recovery
+            # This is THE FIX for the cascade bug
+            if position.get('is_recovery_order', False):
+                logger.debug(f"[GRID BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
+                return None
+
             # ENHANCED LOGGING: Log current grid state for debugging
             logger.debug(f"[GRID CHECK] Position {ticket} ({symbol}):")
             logger.debug(f"  Current grid count: {len(position['grid_levels'])}")
@@ -1583,6 +1596,13 @@ class RecoveryManager:
         with self.hedge_locks[ticket]:
             position = self.tracked_positions[ticket]
             symbol = position['symbol']
+
+            # CRITICAL: Prevent recovery-on-recovery cascades (DCA-on-DCA, Hedge-on-DCA, etc)
+            # Recovery orders (DCA/Hedge/Grid) should NOT trigger their own recovery
+            # This is THE FIX for the cascade bug
+            if position.get('is_recovery_order', False):
+                logger.debug(f"[HEDGE BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
+                return None
 
             # ENHANCED LOGGING: Log current hedge state for debugging
             logger.debug(f"[HEDGE CHECK] Position {ticket} ({symbol}):")
@@ -1837,6 +1857,13 @@ class RecoveryManager:
 
         position = self.tracked_positions[ticket]
         symbol = position['symbol']
+
+        # CRITICAL: Prevent recovery-on-recovery cascades (DCA-on-DCA, Hedge-on-DCA, etc)
+        # Recovery orders (DCA/Hedge/Grid) should NOT trigger their own recovery
+        # This is THE FIX for the cascade bug
+        if position.get('is_recovery_order', False):
+            logger.debug(f"[DCA BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
+            return None
 
         # CRITICAL: Prevent DCA-on-hedge and DCA-on-DCA cascades
         # Orphaned positions (hedge/DCA that lost parent) should NOT trigger their own recovery
