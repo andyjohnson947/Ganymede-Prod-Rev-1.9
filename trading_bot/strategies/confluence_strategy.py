@@ -488,7 +488,8 @@ class ConfluenceStrategy:
                 reconcile_stats = self.recovery_manager.reconcile_with_mt5(all_positions, silent=True)
                 if reconcile_stats['discrepancies_found'] > 0:
                     logger.warning(f"[RECONCILE] Found {reconcile_stats['discrepancies_found']} discrepancies, auto-corrected {reconcile_stats['auto_corrected']}")
-                self.last_reconcile_time = current_time
+            # CRITICAL: Update timer OUTSIDE the position check to prevent running every iteration
+            self.last_reconcile_time = current_time
 
         # CASCADE PROTECTION: Check total unrealized loss across ALL open positions
         # Prevents trending markets from wiping out account before per-stack stops trigger
