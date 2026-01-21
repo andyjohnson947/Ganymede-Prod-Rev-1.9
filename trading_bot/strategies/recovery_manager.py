@@ -11,6 +11,7 @@ import numpy as np
 import json
 import threading
 from pathlib import Path
+import pytz
 
 from utils.logger import logger
 from utils.timezone_manager import get_current_time
@@ -224,6 +225,28 @@ class RecoveryManager:
                 'max_grid_levels': MAX_GRID_LEVELS,
                 'max_dca_levels': DCA_MAX_LEVELS,
             }
+
+    def _ensure_timezone_aware(self, dt: Optional[datetime]) -> Optional[datetime]:
+        """
+        Ensure a datetime object is timezone-aware (UK timezone).
+        Converts timezone-naive datetimes to UK timezone.
+
+        Args:
+            dt: Datetime object (may be None or timezone-naive)
+
+        Returns:
+            Timezone-aware datetime in UK timezone, or None if input was None
+        """
+        if dt is None:
+            return None
+
+        if dt.tzinfo is None:
+            # Naive datetime - localize to UK timezone
+            uk_tz = pytz.timezone("Europe/London")
+            return uk_tz.localize(dt)
+        else:
+            # Already timezone-aware - return as-is
+            return dt
 
     def track_position(
         self,
@@ -963,6 +986,14 @@ class RecoveryManager:
             if isinstance(pos_data['last_grid_time'], datetime):
                 pos_data['last_grid_time'] = pos_data['last_grid_time'].isoformat()
 
+        if 'last_dca_time' in pos_data and pos_data['last_dca_time']:
+            if isinstance(pos_data['last_dca_time'], datetime):
+                pos_data['last_dca_time'] = pos_data['last_dca_time'].isoformat()
+
+        if 'pc2_trigger_time' in pos_data and pos_data['pc2_trigger_time']:
+            if isinstance(pos_data['pc2_trigger_time'], datetime):
+                pos_data['pc2_trigger_time'] = pos_data['pc2_trigger_time'].isoformat()
+
         # Convert time fields in recovery orders (modify in-place since we already copied)
         for grid in pos_data.get('grid_levels', []):
             if 'time' in grid and grid['time']:
@@ -1090,45 +1121,65 @@ class RecoveryManager:
             for ticket_str, pos_data in state['tracked_positions'].items():
                 ticket = int(ticket_str)
 
-                # Convert ISO strings back to datetime objects
+                # Convert ISO strings back to datetime objects (ensure timezone-aware)
                 if 'open_time' in pos_data and pos_data['open_time']:
                     try:
-                        pos_data['open_time'] = datetime.fromisoformat(pos_data['open_time'])
+                        dt = datetime.fromisoformat(pos_data['open_time'])
+                        pos_data['open_time'] = self._ensure_timezone_aware(dt)
                     except:
                         pos_data['open_time'] = get_current_time()
 
                 # Convert cooldown timer fields (added for race condition fix)
                 if 'last_hedge_time' in pos_data and pos_data['last_hedge_time']:
                     try:
-                        pos_data['last_hedge_time'] = datetime.fromisoformat(pos_data['last_hedge_time'])
+                        dt = datetime.fromisoformat(pos_data['last_hedge_time'])
+                        pos_data['last_hedge_time'] = self._ensure_timezone_aware(dt)
                     except:
                         pos_data['last_hedge_time'] = None
 
                 if 'last_grid_time' in pos_data and pos_data['last_grid_time']:
                     try:
-                        pos_data['last_grid_time'] = datetime.fromisoformat(pos_data['last_grid_time'])
+                        dt = datetime.fromisoformat(pos_data['last_grid_time'])
+                        pos_data['last_grid_time'] = self._ensure_timezone_aware(dt)
                     except:
                         pos_data['last_grid_time'] = None
 
-                # Convert time fields in recovery orders
+                if 'last_dca_time' in pos_data and pos_data['last_dca_time']:
+                    try:
+                        dt = datetime.fromisoformat(pos_data['last_dca_time'])
+                        pos_data['last_dca_time'] = self._ensure_timezone_aware(dt)
+                    except:
+                        pos_data['last_dca_time'] = None
+
+                if 'pc2_trigger_time' in pos_data and pos_data['pc2_trigger_time']:
+                    try:
+                        dt = datetime.fromisoformat(pos_data['pc2_trigger_time'])
+                        pos_data['pc2_trigger_time'] = self._ensure_timezone_aware(dt)
+                    except:
+                        pos_data['pc2_trigger_time'] = None
+
+                # Convert time fields in recovery orders (ensure timezone-aware)
                 for grid in pos_data.get('grid_levels', []):
                     if 'time' in grid and grid['time']:
                         try:
-                            grid['time'] = datetime.fromisoformat(grid['time'])
+                            dt = datetime.fromisoformat(grid['time'])
+                            grid['time'] = self._ensure_timezone_aware(dt)
                         except:
                             grid['time'] = None
 
                 for hedge in pos_data.get('hedge_tickets', []):
                     if 'time' in hedge and hedge['time']:
                         try:
-                            hedge['time'] = datetime.fromisoformat(hedge['time'])
+                            dt = datetime.fromisoformat(hedge['time'])
+                            hedge['time'] = self._ensure_timezone_aware(dt)
                         except:
                             hedge['time'] = None
 
                 for dca in pos_data.get('dca_levels', []):
                     if 'time' in dca and dca['time']:
                         try:
-                            dca['time'] = datetime.fromisoformat(dca['time'])
+                            dt = datetime.fromisoformat(dca['time'])
+                            dca['time'] = self._ensure_timezone_aware(dt)
                         except:
                             dca['time'] = None
 
