@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-21T03:44:09.862006",
+  "timestamp": "2026-01-21T04:48:08.471349",
   "tracked_positions": {
     "54755086837": {
       "ticket": 54755086837,
@@ -95,6 +95,23 @@
       "max_underwater_pips": 0,
       "recovery_active": false,
       "open_time": "2026-01-21T04:53:06",
+      "is_orphaned": false,
+      "last_hedge_time": null,
+      "last_grid_time": null
+    },
+    "54756066616": {
+      "ticket": 54756066616,
+      "symbol": "GBPUSD",
+      "entry_price": 1.34435,
+      "type": "sell",
+      "initial_volume": 0.06,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [],
+      "total_volume": 0.06,
+      "max_underwater_pips": 0,
+      "recovery_active": false,
+      "open_time": "2026-01-21T05:48:14",
       "is_orphaned": false,
       "last_hedge_time": null,
       "last_grid_time": null
@@ -2799,5 +2816,11 @@
       "closed_time": "2026-01-20T23:42:52.147009+00:00",
       "status": "closed"
     }
-  ]
+  ],
+  "cascade_blocks": {},
+  "market_trending_block": {
+    "EURUSD": false,
+    "GBPUSD": false
+  },
+  "last_block_update": "2026-01-21T04:49:08.765495"
 }
