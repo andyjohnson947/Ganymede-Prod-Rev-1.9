@@ -620,7 +620,7 @@ class RecoveryManager:
                         'level': level,
                         'volume': pos.get('volume', 0),
                         'price': pos.get('price_open', 0),
-                        'time': pos.get('time', None)
+                        'time': self._ensure_timezone_aware(pos.get('time', None))
                     })
 
                     stats['grid_levels_found'] += 1
@@ -686,7 +686,7 @@ class RecoveryManager:
                         'type': hedge_type,
                         'volume': pos.get('volume', 0),
                         'trigger_pips': 0,  # Unknown after reconstruction
-                        'time': pos.get('time', None),
+                        'time': self._ensure_timezone_aware(pos.get('time', None)),
                         'dca_levels': [],  # Track DCA positions added to help ORIGINAL recovery
                     })
 
@@ -754,7 +754,7 @@ class RecoveryManager:
                         'ticket': ticket,
                         'level': level,
                         'volume': pos.get('volume', 0),
-                        'time': pos.get('time', None)
+                        'time': self._ensure_timezone_aware(pos.get('time', None))
                     })
 
                     stats['dca_levels_found'] += 1
@@ -1279,7 +1279,7 @@ class RecoveryManager:
                     'total_volume': pos['volume'],
                     'max_underwater_pips': 0,
                     'recovery_active': False,
-                    'open_time': pos['time'],
+                    'open_time': self._ensure_timezone_aware(pos.get('time')),
                     'is_orphaned': False,
                     'last_hedge_time': None,
                     'last_grid_time': None,
