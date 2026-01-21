@@ -437,17 +437,29 @@ class RecoveryManager:
 
             # Check volume matches
             mt5_volume = mt5_pos.get('volume', 0)
-            tracked_volume = tracked.get('initial_volume', 0)
+            tracked_initial_volume = tracked.get('initial_volume', 0)
 
-            if abs(mt5_volume - tracked_volume) > 0.001:  # Allow tiny floating point diff
-                stats['discrepancies_found'] += 1
-                stats['issues'].append({
-                    'type': 'volume_mismatch',
-                    'ticket': ticket,
-                    'tracked_volume': tracked_volume,
-                    'mt5_volume': mt5_volume
-                })
-                logger.warning(f"[RECONCILE] Volume mismatch for {ticket}: tracked {tracked_volume:.2f}, MT5 {mt5_volume:.2f}")
+            if abs(mt5_volume - tracked_initial_volume) > 0.001:  # Allow tiny floating point diff
+                # Volume mismatch detected
+                # IMPORTANT: After partial closes (PC1/PC2), MT5 volume < initial_volume is EXPECTED
+                # Only warn if MT5 volume > initial_volume (unexpected growth)
+                if mt5_volume > tracked_initial_volume:
+                    # Unexpected: MT5 volume increased somehow
+                    stats['discrepancies_found'] += 1
+                    stats['issues'].append({
+                        'type': 'volume_increased',
+                        'ticket': ticket,
+                        'tracked_volume': tracked_initial_volume,
+                        'mt5_volume': mt5_volume
+                    })
+                    logger.warning(f"[RECONCILE] Unexpected volume increase for {ticket}: tracked {tracked_initial_volume:.2f}, MT5 {mt5_volume:.2f}")
+                else:
+                    # Expected: Partial close reduced volume (PC1/PC2)
+                    # Silently update initial_volume to match MT5 (MT5 is source of truth)
+                    if not silent:
+                        logger.debug(f"[RECONCILE] Volume reduced for {ticket} (partial close): {tracked_initial_volume:.2f} -> {mt5_volume:.2f}")
+                    tracked['initial_volume'] = mt5_volume
+                    stats['auto_corrected'] += 1
 
             # Check entry price matches (within 10 pip tolerance for slippage)
             mt5_entry = mt5_pos.get('price_open', 0)
