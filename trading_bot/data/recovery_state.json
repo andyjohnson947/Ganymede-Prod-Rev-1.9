@@ -1,191 +1,55 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-20T12:16:58.603846",
+  "timestamp": "2026-01-21T03:24:02.676102",
   "tracked_positions": {
-    "54740802310": {
-      "ticket": 54740802310,
+    "54755086837": {
+      "ticket": 54755086837,
       "symbol": "GBPUSD",
-      "entry_price": 1.3456000000000001,
+      "entry_price": 1.3434599999999999,
       "type": "sell",
       "initial_volume": 0.04,
       "grid_levels": [],
       "hedge_tickets": [
         {
-          "ticket": 54742541824,
+          "ticket": 54755216699,
           "type": "buy",
           "volume": 0.06,
           "trigger_pips": 0,
-          "time": "2026-01-20T11:51:55",
+          "time": "2026-01-21T04:49:06",
           "dca_levels": []
         }
       ],
       "dca_levels": [
         {
-          "ticket": 54742520010,
+          "ticket": 54755151804,
           "level": 1,
           "volume": 0.05,
-          "time": "2026-01-20T11:50:55"
+          "time": "2026-01-21T04:44:05"
         },
         {
-          "ticket": 54742926648,
+          "ticket": 54755281392,
           "level": 2,
           "volume": 0.06,
-          "time": "2026-01-20T12:05:56"
+          "time": "2026-01-21T04:53:06"
         }
       ],
       "total_volume": 0.15,
-      "max_underwater_pips": 61.99999999998428,
+      "max_underwater_pips": 56.00000000001159,
       "recovery_active": true,
-      "open_time": "2026-01-20T13:56:40.645030+00:00",
-      "last_hedge_time": "2026-01-20T14:51:55.573639+00:00",
+      "open_time": "2026-01-21T07:39:58.755467+00:00",
+      "last_hedge_time": "2026-01-21T07:49:01.768824+00:00",
       "last_grid_time": null,
       "is_grid_child": false,
-      "partial_1_closed": true,
-      "partial_2_closed": true,
+      "partial_1_closed": false,
+      "partial_2_closed": false,
       "pc2_trigger_time": null,
       "trailing_stop_active": false,
       "trailing_stop_distance_pips": 0,
       "trailing_stop_price": 0.0,
-      "highest_profit_price": 1.3456000000000001
+      "highest_profit_price": 1.3434599999999999
     }
   },
   "archived_positions": [
-    {
-      "ticket": 54578256750,
-      "symbol": "GBPUSD",
-      "entry_price": 1.3515,
-      "type": "sell",
-      "initial_volume": 0.32,
-      "grid_levels": [],
-      "hedge_tickets": [],
-      "dca_levels": [],
-      "total_volume": 0.32,
-      "max_underwater_pips": 22.999999999995243,
-      "recovery_active": false,
-      "open_time": "2026-01-07T03:36:50.095213+00:00",
-      "is_orphaned": true,
-      "orphan_source": "dca",
-      "original_parent": 5457334,
-      "closed_time": "2026-01-16T17:58:32.723128+00:00",
-      "status": "closed"
-    },
-    {
-      "ticket": 54682414960,
-      "symbol": "GBPUSD",
-      "entry_price": 1.34377,
-      "type": "buy",
-      "initial_volume": 0.04,
-      "grid_levels": [],
-      "hedge_tickets": [
-        {
-          "type": "sell",
-          "volume": 0.06,
-          "trigger_pips": 58.999999999986834,
-          "time": "2026-01-14T20:45:12.254883+00:00",
-          "pending": false,
-          "ticket": 54682515473
-        }
-      ],
-      "dca_levels": [
-        {
-          "price": 1.34318,
-          "volume": 0.06,
-          "level": 1,
-          "time": "2026-01-14T20:45:12.254883+00:00",
-          "ticket": 54682515486
-        }
-      ],
-      "total_volume": 0.1,
-      "max_underwater_pips": 58.999999999986834,
-      "recovery_active": true,
-      "open_time": "2026-01-14T20:35:16.806331+00:00",
-      "last_hedge_time": "2026-01-14T20:45:12.254883+00:00",
-      "last_grid_time": null,
-      "is_grid_child": true,
-      "closed_time": "2026-01-16T17:58:32.723128+00:00",
-      "status": "closed"
-    },
-    {
-      "ticket": 54689280369,
-      "symbol": "EURUSD",
-      "entry_price": 1.1635199999999999,
-      "type": "buy",
-      "initial_volume": 0.04,
-      "grid_levels": [],
-      "hedge_tickets": [],
-      "dca_levels": [
-        {
-          "price": 1.16316,
-          "volume": 0.06,
-          "level": 1,
-          "time": "2026-01-15T11:48:35.809874+00:00",
-          "ticket": 54690987537
-        },
-        {
-          "price": 1.16276,
-          "volume": 0.09,
-          "level": 2,
-          "time": "2026-01-15T12:48:46.201556+00:00",
-          "ticket": 54691716276
-        },
-        {
-          "price": 1.16255,
-          "volume": 0.14,
-          "level": 3,
-          "time": "2026-01-15T12:55:46.560090+00:00",
-          "ticket": 54691827725
-        }
-      ],
-      "total_volume": 0.33,
-      "max_underwater_pips": 99.99999999998897,
-      "recovery_active": true,
-      "open_time": "2026-01-15T09:38:06.317477+00:00",
-      "last_hedge_time": "2026-01-15T13:02:46.940242+00:00",
-      "last_grid_time": null,
-      "is_grid_child": true,
-      "closed_time": "2026-01-16T17:58:32.723128+00:00",
-      "status": "closed"
-    },
-    {
-      "ticket": 54694753651,
-      "symbol": "EURUSD",
-      "entry_price": 1.16089,
-      "type": "sell",
-      "initial_volume": 0.04,
-      "grid_levels": [],
-      "hedge_tickets": [
-        {
-          "ticket": 54698747176,
-          "type": "buy",
-          "volume": 0.06,
-          "trigger_pips": 0,
-          "time": "2026-01-16T01:36:25"
-        }
-      ],
-      "dca_levels": [
-        {
-          "price": 1.16132,
-          "volume": 0.06,
-          "level": 1,
-          "time": "2026-01-15T18:04:45.293144+00:00"
-        }
-      ],
-      "total_volume": 0.1,
-      "max_underwater_pips": 80.99999999999774,
-      "recovery_active": true,
-      "open_time": "2026-01-15T17:52:10.444350+00:00",
-      "last_hedge_time": "2026-01-16T04:36:21.028977+00:00",
-      "last_grid_time": null,
-      "is_grid_child": true,
-      "partial_1_closed": false,
-      "partial_2_closed": false,
-      "trailing_stop_active": false,
-      "trailing_stop_distance_pips": 0,
-      "trailing_stop_price": 0.0,
-      "highest_profit_price": 1.16089,
-      "closed_time": "2026-01-16T17:58:32.723128+00:00",
-      "status": "closed"
-    },
     {
       "ticket": 54583159668,
       "symbol": "EURUSD",
@@ -2795,6 +2659,93 @@
       "is_orphaned": true,
       "orphan_source": "dca",
       "closed_time": "2026-01-20T14:05:01.379022+00:00",
+      "status": "closed"
+    },
+    {
+      "ticket": 54745825601,
+      "symbol": "GBPUSD",
+      "entry_price": 1.34689,
+      "type": "sell",
+      "initial_volume": 0.08,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [],
+      "total_volume": 0.08,
+      "max_underwater_pips": 0,
+      "recovery_active": false,
+      "open_time": "2026-01-20T17:19:07.369136+00:00",
+      "last_hedge_time": null,
+      "last_grid_time": null,
+      "is_orphaned": true,
+      "orphan_source": "hedge",
+      "closed_time": "2026-01-20T23:42:52.147009+00:00",
+      "status": "closed"
+    },
+    {
+      "ticket": 54742520010,
+      "symbol": "GBPUSD",
+      "entry_price": 1.34611,
+      "type": "sell",
+      "initial_volume": 0.05,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [
+        {
+          "price": 1.34689,
+          "volume": 0.06,
+          "level": 1,
+          "time": "2026-01-20T17:18:07.113482+00:00",
+          "ticket": 54745825643
+        }
+      ],
+      "total_volume": 0.11,
+      "max_underwater_pips": 78.00000000000028,
+      "recovery_active": true,
+      "open_time": "2026-01-20T11:50:55",
+      "is_orphaned": false,
+      "last_hedge_time": "2026-01-20T17:18:07.113482+00:00",
+      "last_grid_time": null,
+      "closed_time": "2026-01-20T23:42:52.147009+00:00",
+      "status": "closed"
+    },
+    {
+      "ticket": 54745825681,
+      "symbol": "GBPUSD",
+      "entry_price": 1.3468499999999999,
+      "type": "sell",
+      "initial_volume": 0.07,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [],
+      "total_volume": 0.07,
+      "max_underwater_pips": 0,
+      "recovery_active": false,
+      "open_time": "2026-01-20T17:19:07.369136+00:00",
+      "last_hedge_time": null,
+      "last_grid_time": null,
+      "is_orphaned": true,
+      "orphan_source": "dca",
+      "closed_time": "2026-01-20T23:42:52.147009+00:00",
+      "status": "closed"
+    },
+    {
+      "ticket": 54746081348,
+      "symbol": "GBPUSD",
+      "entry_price": 1.34579,
+      "type": "sell",
+      "initial_volume": 0.07,
+      "grid_levels": [],
+      "hedge_tickets": [],
+      "dca_levels": [],
+      "total_volume": 0.07,
+      "max_underwater_pips": 0,
+      "recovery_active": false,
+      "open_time": "2026-01-20T17:35:07.973719+00:00",
+      "last_hedge_time": null,
+      "last_grid_time": null,
+      "is_orphaned": true,
+      "orphan_source": "dca",
+      "closed_time": "2026-01-20T23:42:52.147009+00:00",
       "status": "closed"
     }
   ]
