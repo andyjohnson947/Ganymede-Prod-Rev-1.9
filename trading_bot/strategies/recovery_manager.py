@@ -1154,10 +1154,11 @@ class RecoveryManager:
             traceback.print_exc()
             return False
 
-    def reconcile_with_mt5(self, mt5_manager) -> tuple:
+    def reconcile_on_startup(self, mt5_manager) -> tuple:
         """
         Reconcile tracked positions with MT5 reality after loading state.
         Critical for crash recovery - ensures state matches actual open positions.
+        Called once during bot initialization.
 
         Args:
             mt5_manager: MT5Manager instance for querying positions

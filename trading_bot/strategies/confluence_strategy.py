@@ -160,7 +160,7 @@ class ConfluenceStrategy:
 
         # ALWAYS reconcile with MT5, even if state loaded (critical for crash recovery)
         print("🔄 Reconciling tracked positions with MT5...", flush=True)
-        added, removed, validated = self.recovery_manager.reconcile_with_mt5(self.mt5)
+        added, removed, validated = self.recovery_manager.reconcile_on_startup(self.mt5)
 
         if state_loaded:
             print(f"[OK] State loaded and reconciled:")
