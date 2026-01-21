@@ -632,7 +632,10 @@ class ConfluenceStrategy:
 
                 # PC2 CHECK: Close another 25% at 20 pips (EURUSD) or 25 pips (GBPUSD)
                 elif pc1_closed and not pc2_closed and profit_pips >= pc2_pips:
-                    close_volume = round(position['volume'] * pc2_percent, 2)
+                    # FIXED: Use INITIAL volume for PC2, not current volume (which is reduced after PC1)
+                    # PC2 should close 25% of ORIGINAL position, leaving 50% running total
+                    initial_volume = tracked_pos.get('initial_volume', position['volume'])
+                    close_volume = round(initial_volume * pc2_percent, 2)
 
                     if close_volume > 0 and close_volume < position['volume']:
                         short_ticket = str(ticket)[-5:]
@@ -747,7 +750,9 @@ class ConfluenceStrategy:
                     new_stop = tracked_pos.get('trailing_stop_price', 0)
                     if new_stop != old_stop and self.ml_logger:
                         pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-                        pips_moved = abs(new_stop - old_stop) / (pip_value * 10)
+
+                        # FIXED: Removed * 10 from pips calculation
+                        pips_moved = abs(new_stop - old_stop) / pip_value
                         self.ml_logger.log_trailing_update(
                             ticket=ticket,
                             symbol=symbol,
@@ -1128,6 +1133,11 @@ class ConfluenceStrategy:
 
         # Try breakout signal (if mean reversion found nothing and breakout is allowed)
         if signal is None and can_trade_bo and self.breakout_strategy:
+            # FIXED: Check if h1_data is empty before accessing iloc
+            if len(h1_data) == 0:
+                print(f"[WARN] Empty H1 data for {symbol}, skipping breakout check")
+                return None
+
             # Get current price and volume
             latest_bar = h1_data.iloc[-1]
             current_price = latest_bar['close']

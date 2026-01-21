@@ -2356,16 +2356,14 @@ class RecoveryManager:
             min_pips = tp_settings.get('trailing_stop_min_pips', 25)
             max_pips = tp_settings.get('trailing_stop_max_pips', 50)
 
-            # Get current ATR (14-period on H1)
-            bars = self.mt5.copy_rates_from_pos(symbol, self.mt5.TIMEFRAME_H1, 0, 50)
-            if bars is None or len(bars) < 14:
+            # FIXED: Get current ATR (14-period on H1) using MT5Manager method
+            df = self.mt5.get_historical_data(symbol, 'H1', bars=50)
+            if df is None or len(df) < 14:
                 logger.warning(f"[TRAIL] Insufficient bars for ATR calculation, using minimum: {min_pips} pips")
                 return min_pips
 
             # Calculate ATR(14)
-            import pandas as pd
             import numpy as np
-            df = pd.DataFrame(bars)
             high_low = df['high'] - df['low']
             high_close = np.abs(df['high'] - df['close'].shift())
             low_close = np.abs(df['low'] - df['close'].shift())
@@ -2375,8 +2373,11 @@ class RecoveryManager:
             # Convert ATR to pips (multiply by 10000 for most pairs, 100 for JPY pairs)
             symbol_info = self.mt5.get_symbol_info(symbol)
             point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-            pip_multiplier = 10000 if 'JPY' not in symbol else 100
-            atr_pips = (atr_14 / point) / (pip_multiplier / 10)
+
+            # FIXED: Simple ATR to pips conversion without extra division
+            # For EUR/USD: point=0.0001, so atr_pips = atr_14 / 0.0001 (e.g., 0.0050 / 0.0001 = 50 pips)
+            # For JPY: point=0.01, so atr_pips = atr_14 / 0.01 (e.g., 0.50 / 0.01 = 50 pips)
+            atr_pips = atr_14 / point
 
             # Calculate trailing distance: ATR × multiplier, bounded by min/max
             trailing_pips = atr_pips * atr_multiplier
@@ -2410,7 +2411,9 @@ class RecoveryManager:
         # Get point value for symbol
         symbol_info = self.mt5.get_symbol_info(symbol)
         point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-        trailing_distance = trailing_pips * point * 10
+
+        # FIXED: Removed * 10 - trailing_pips is already in pips, multiply by point to get price distance
+        trailing_distance = trailing_pips * point
 
         # Set trailing stop
         if position['type'] == 'buy':
@@ -2451,13 +2454,17 @@ class RecoveryManager:
                 position['highest_profit_price'] = current_price
                 symbol_info = self.mt5.get_symbol_info(symbol)
                 point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-                trailing_distance = position['trailing_stop_distance_pips'] * point * 10
+
+                # FIXED: Removed * 10 from trailing distance calculation
+                trailing_distance = position['trailing_stop_distance_pips'] * point
                 new_stop = current_price - trailing_distance
 
                 if new_stop > position['trailing_stop_price']:
                     old_stop = position['trailing_stop_price']
                     position['trailing_stop_price'] = new_stop
-                    pips_moved = (new_stop - old_stop) / (point * 10)
+
+                    # FIXED: Removed * 10 from pips calculation
+                    pips_moved = (new_stop - old_stop) / point
                     logger.debug(f"[TRAIL] #{ticket} stop moved UP {pips_moved:.1f} pips to {new_stop:.5f}")
         else:  # sell
             if current_price < position['highest_profit_price']:
@@ -2465,13 +2472,17 @@ class RecoveryManager:
                 position['highest_profit_price'] = current_price
                 symbol_info = self.mt5.get_symbol_info(symbol)
                 point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-                trailing_distance = position['trailing_stop_distance_pips'] * point * 10
+
+                # FIXED: Removed * 10 from trailing distance calculation
+                trailing_distance = position['trailing_stop_distance_pips'] * point
                 new_stop = current_price + trailing_distance
 
                 if new_stop < position['trailing_stop_price']:
                     old_stop = position['trailing_stop_price']
                     position['trailing_stop_price'] = new_stop
-                    pips_moved = (old_stop - new_stop) / (point * 10)
+
+                    # FIXED: Removed * 10 from pips calculation
+                    pips_moved = (old_stop - new_stop) / point
                     logger.debug(f"[TRAIL] #{ticket} stop moved DOWN {pips_moved:.1f} pips to {new_stop:.5f}")
 
     def check_trailing_stop(self, ticket: int, current_price: float) -> bool:
@@ -2756,9 +2767,15 @@ class RecoveryManager:
 
                     logger.info(f"[HEDGE DCA CONFIRMED] M15 shows trend away from hedge direction - hedge DCA allowed")
 
-                # Calculate DCA volume (increase by multiplier)
-                hedge_volume = hedge_info.get('volume', 0)
-                dca_volume = hedge_volume * (dca_multiplier ** current_dca_count)
+                # FIXED: Calculate DCA volume matching regular DCA logic (iterative multiplication)
+                # First level: hedge_volume × 1.2, Second level: previous × 1.2
+                if current_dca_count == 0:
+                    hedge_volume = hedge_info.get('volume', 0)
+                    dca_volume = hedge_volume * dca_multiplier
+                else:
+                    last_dca = hedge_dca_levels[-1]
+                    dca_volume = last_dca['volume'] * dca_multiplier
+
                 dca_volume = round_volume_to_step(dca_volume)
 
                 # CRITICAL: DCA goes in ORIGINAL direction (opposite of hedge!)
