@@ -664,7 +664,6 @@ class ConfluenceStrategy:
                                 print(f"[PC2] Trailing stop activated for {ticket}")
 
                                 # Set PC2 trigger time for 60-min limit
-                                from trading_bot.utils.timezone_manager import get_current_time
                                 tracked_pos['pc2_trigger_time'] = get_current_time()
 
                                 # ML LOGGING: Log PC2 trigger
@@ -717,9 +716,6 @@ class ConfluenceStrategy:
                     # Check PC2 time limit (60 min) - close remaining 50% if time elapsed
                     pc2_time = tracked_pos.get('pc2_trigger_time')
                     if pc2_time:
-                        from trading_bot.utils.timezone_manager import get_current_time
-                        from datetime import timedelta
-
                         # Normalize pc2_time to timezone-aware if needed
                         current_time = get_current_time()
                         if pc2_time.tzinfo is None:
