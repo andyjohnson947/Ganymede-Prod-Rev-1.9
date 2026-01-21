@@ -260,6 +260,7 @@ class RecoveryManager:
             'open_time': get_current_time(),  # Track when position opened
             'last_hedge_time': None,  # Track last hedge time for cooldown
             'last_grid_time': None,  # Track last grid time for cooldown
+            'last_dca_time': None,  # Track last DCA time for cooldown
             'is_grid_child': is_grid_child,  # Prevents grid spawning (stops cascade)
             # Partial profit tracking
             'partial_1_closed': False,
@@ -306,6 +307,101 @@ class RecoveryManager:
         elif action_type == 'dca' and position['dca_levels']:
             # Store ticket in the most recent DCA level
             position['dca_levels'][-1]['ticket'] = recovery_ticket
+
+    def clear_stale_pending_flags(self, ticket: int, max_age_seconds: int = 300):
+        """
+        Clear pending flags that are older than max_age_seconds (default 5 minutes).
+        Prevents permanent blocking if order placement failed without clearing the flag.
+
+        Args:
+            ticket: Position ticket to check
+            max_age_seconds: Maximum age for pending flags (default 300 = 5 minutes)
+
+        Returns:
+            Number of stale flags cleared
+        """
+        if ticket not in self.tracked_positions:
+            return 0
+
+        position = self.tracked_positions[ticket]
+        current_time = get_current_time()
+        cleared_count = 0
+
+        # Check grid pending flags
+        for grid in position['grid_levels']:
+            if grid.get('pending', False) and 'time' in grid:
+                age_seconds = (current_time - grid['time']).total_seconds()
+                if age_seconds > max_age_seconds:
+                    grid['pending'] = False
+                    cleared_count += 1
+                    logger.warning(f"[PENDING TIMEOUT] Cleared stale grid pending flag (age: {age_seconds:.0f}s) for position {ticket}")
+
+        # Check hedge pending flags
+        for hedge in position['hedge_tickets']:
+            if hedge.get('pending', False) and 'time' in hedge:
+                age_seconds = (current_time - hedge['time']).total_seconds()
+                if age_seconds > max_age_seconds:
+                    hedge['pending'] = False
+                    cleared_count += 1
+                    logger.warning(f"[PENDING TIMEOUT] Cleared stale hedge pending flag (age: {age_seconds:.0f}s) for position {ticket}")
+
+            # Check hedge DCA pending flags
+            hedge_dca_levels = hedge.get('dca_levels', [])
+            for dca in hedge_dca_levels:
+                if dca.get('pending', False) and 'time' in dca:
+                    age_seconds = (current_time - dca['time']).total_seconds()
+                    if age_seconds > max_age_seconds:
+                        dca['pending'] = False
+                        cleared_count += 1
+                        logger.warning(f"[PENDING TIMEOUT] Cleared stale hedge DCA pending flag (age: {age_seconds:.0f}s) for position {ticket}")
+
+        # Check DCA pending flags
+        for dca in position['dca_levels']:
+            if dca.get('pending', False) and 'time' in dca:
+                age_seconds = (current_time - dca['time']).total_seconds()
+                if age_seconds > max_age_seconds:
+                    dca['pending'] = False
+                    cleared_count += 1
+                    logger.warning(f"[PENDING TIMEOUT] Cleared stale DCA pending flag (age: {age_seconds:.0f}s) for position {ticket}")
+
+        return cleared_count
+
+    def check_max_lots_limit(self, additional_volume: float, mt5_positions: List[Dict]) -> bool:
+        """
+        Check if adding additional_volume would exceed MAX_TOTAL_LOTS limit.
+        Prevents margin calls by enforcing maximum exposure.
+
+        Args:
+            additional_volume: Volume to be added (in lots)
+            mt5_positions: Current MT5 positions
+
+        Returns:
+            True if order is allowed, False if it would exceed limit
+        """
+        from config.strategy_config import MAX_TOTAL_LOTS
+
+        # Calculate current total exposure
+        current_total = sum(pos.get('volume', 0) for pos in mt5_positions)
+
+        # Check if adding this volume would exceed limit
+        projected_total = current_total + additional_volume
+
+        if projected_total > MAX_TOTAL_LOTS:
+            logger.error(f"[MAX LOTS EXCEEDED] Cannot add {additional_volume:.2f} lots")
+            logger.error(f"   Current: {current_total:.2f} lots")
+            logger.error(f"   Projected: {projected_total:.2f} lots")
+            logger.error(f"   Limit: {MAX_TOTAL_LOTS:.2f} lots")
+            logger.error(f"   BLOCKED to prevent margin call")
+            return False
+
+        # Log if getting close to limit (within 80%)
+        if projected_total > (MAX_TOTAL_LOTS * 0.8):
+            logger.warning(f"[LOTS WARNING] Approaching max lots limit")
+            logger.warning(f"   Current: {current_total:.2f} lots")
+            logger.warning(f"   After order: {projected_total:.2f} lots")
+            logger.warning(f"   Limit: {MAX_TOTAL_LOTS:.2f} lots ({(projected_total/MAX_TOTAL_LOTS)*100:.1f}%)")
+
+        return True
 
     def reconstruct_recovery_stacks(self, mt5_positions: List[Dict], silent: bool = False) -> Dict:
         """
@@ -1147,6 +1243,10 @@ class RecoveryManager:
             # CRITICAL FIX #2: Enhanced pending grid check with explicit 'pending' flag
             # This prevents race condition where multiple grid actions are triggered
             # before any orders are actually placed
+
+            # ADDED: Clear stale pending flags (older than 5 minutes)
+            self.clear_stale_pending_flags(ticket, max_age_seconds=300)
+
             pending_grids = [g for g in position['grid_levels']
                            if g.get('pending', False) or 'ticket' not in g or g.get('ticket') is None]
             if pending_grids:
@@ -1254,6 +1354,15 @@ class RecoveryManager:
                 logger.info(f"   Status: PENDING (waiting for ticket assignment)")
                 logger.info(f"   Cooldown: 2 minutes from now")
 
+                # ADDED: Check max lots limit before returning action
+                mt5_positions = self.mt5.get_positions()
+                if not self.check_max_lots_limit(grid_volume, mt5_positions):
+                    logger.error(f"[GRID BLOCKED] Max lots limit would be exceeded")
+                    # Remove the pending grid level we just added
+                    position['grid_levels'].pop()
+                    position['total_volume'] -= grid_volume
+                    return None
+
                 # Use last 5 digits of ticket for cleaner comment (MT5 31 char limit)
                 short_ticket = str(ticket)[-5:]
                 return {
@@ -1344,6 +1453,10 @@ class RecoveryManager:
             # CRITICAL FIX #2: Enhanced pending hedge check with explicit 'pending' flag
             # This prevents race condition where multiple hedge actions are triggered
             # before any orders are actually placed
+
+            # ADDED: Clear stale pending flags (older than 5 minutes)
+            self.clear_stale_pending_flags(ticket, max_age_seconds=300)
+
             pending_hedges = [h for h in position['hedge_tickets']
                             if h.get('pending', False) or 'ticket' not in h or h.get('ticket') is None]
             if pending_hedges:
@@ -1494,6 +1607,14 @@ class RecoveryManager:
                 print(f"   Status: PENDING (waiting for ticket assignment)")
                 print(f"   Cooldown: 5 minutes from now")
 
+                # ADDED: Check max lots limit before returning action
+                mt5_positions = self.mt5.get_positions()
+                if not self.check_max_lots_limit(hedge_volume, mt5_positions):
+                    logger.error(f"[HEDGE BLOCKED] Max lots limit would be exceeded")
+                    # Remove the pending hedge we just added
+                    position['hedge_tickets'].pop()
+                    return None
+
                 # Use last 5 digits of ticket for cleaner comment (MT5 31 char limit)
                 short_ticket = str(ticket)[-5:]
                 return {
@@ -1558,10 +1679,34 @@ class RecoveryManager:
         # CRITICAL: Check if there's already a pending DCA (no ticket yet)
         # This prevents race condition where multiple DCA actions are triggered
         # before any orders are actually placed
+
+        # ADDED: Clear stale pending flags (older than 5 minutes)
+        self.clear_stale_pending_flags(ticket, max_age_seconds=300)
+
         pending_dcas = [d for d in position['dca_levels'] if 'ticket' not in d or d.get('ticket') is None]
         if pending_dcas:
             logger.debug(f"DCA: {ticket} already has pending DCA order, skipping")
             return None
+
+        # ADDED: DCA cooldown timer (2 minutes between DCA levels)
+        # Prevents rapid cascade if price drops quickly
+        last_dca_time = position.get('last_dca_time')
+        if last_dca_time:
+            current_time = get_current_time()
+            # Normalize timezone if needed
+            if last_dca_time.tzinfo is None:
+                import pytz
+                uk_tz = pytz.timezone("Europe/London")
+                last_dca_time = uk_tz.localize(last_dca_time)
+            else:
+                import pytz
+                uk_tz = pytz.timezone("Europe/London")
+                last_dca_time = last_dca_time.astimezone(uk_tz)
+
+            time_since_last_dca = (current_time - last_dca_time).total_seconds()
+            if time_since_last_dca < 120:  # 2 minute cooldown
+                logger.debug(f"[DCA BLOCKED] {ticket} cooldown active: {time_since_last_dca:.0f}s since last DCA (need 120s)")
+                return None
 
         entry_price = position['entry_price']
         position_type = position['type']
@@ -1716,10 +1861,22 @@ class RecoveryManager:
             position['total_volume'] += dca_volume
             position['recovery_active'] = True
 
+            # Update last DCA time for cooldown
+            position['last_dca_time'] = get_current_time()
+
             print(f" DCA Level {len(position['dca_levels'])} triggered for {ticket}")
             print(f"   Price: {current_price:.5f}")
             print(f"   Volume: {dca_volume:.2f} (multiplier: {dca_multiplier}x)")
             print(f"   Total volume now: {position['total_volume']:.2f}")
+
+            # ADDED: Check max lots limit before returning action
+            mt5_positions = self.mt5.get_positions()
+            if not self.check_max_lots_limit(dca_volume, mt5_positions):
+                logger.error(f"[DCA BLOCKED] Max lots limit would be exceeded")
+                # Remove the pending DCA level we just added
+                position['dca_levels'].pop()
+                position['total_volume'] -= dca_volume
+                return None
 
             # Use last 5 digits of ticket for cleaner comment (MT5 31 char limit)
             short_ticket = str(ticket)[-5:]
@@ -2356,16 +2513,14 @@ class RecoveryManager:
             min_pips = tp_settings.get('trailing_stop_min_pips', 25)
             max_pips = tp_settings.get('trailing_stop_max_pips', 50)
 
-            # Get current ATR (14-period on H1)
-            bars = self.mt5.copy_rates_from_pos(symbol, self.mt5.TIMEFRAME_H1, 0, 50)
-            if bars is None or len(bars) < 14:
+            # FIXED: Get current ATR (14-period on H1) using MT5Manager method
+            df = self.mt5.get_historical_data(symbol, 'H1', bars=50)
+            if df is None or len(df) < 14:
                 logger.warning(f"[TRAIL] Insufficient bars for ATR calculation, using minimum: {min_pips} pips")
                 return min_pips
 
             # Calculate ATR(14)
-            import pandas as pd
             import numpy as np
-            df = pd.DataFrame(bars)
             high_low = df['high'] - df['low']
             high_close = np.abs(df['high'] - df['close'].shift())
             low_close = np.abs(df['low'] - df['close'].shift())
@@ -2375,8 +2530,11 @@ class RecoveryManager:
             # Convert ATR to pips (multiply by 10000 for most pairs, 100 for JPY pairs)
             symbol_info = self.mt5.get_symbol_info(symbol)
             point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-            pip_multiplier = 10000 if 'JPY' not in symbol else 100
-            atr_pips = (atr_14 / point) / (pip_multiplier / 10)
+
+            # FIXED: Simple ATR to pips conversion without extra division
+            # For EUR/USD: point=0.0001, so atr_pips = atr_14 / 0.0001 (e.g., 0.0050 / 0.0001 = 50 pips)
+            # For JPY: point=0.01, so atr_pips = atr_14 / 0.01 (e.g., 0.50 / 0.01 = 50 pips)
+            atr_pips = atr_14 / point
 
             # Calculate trailing distance: ATR × multiplier, bounded by min/max
             trailing_pips = atr_pips * atr_multiplier
@@ -2410,7 +2568,9 @@ class RecoveryManager:
         # Get point value for symbol
         symbol_info = self.mt5.get_symbol_info(symbol)
         point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-        trailing_distance = trailing_pips * point * 10
+
+        # FIXED: Removed * 10 - trailing_pips is already in pips, multiply by point to get price distance
+        trailing_distance = trailing_pips * point
 
         # Set trailing stop
         if position['type'] == 'buy':
@@ -2451,13 +2611,17 @@ class RecoveryManager:
                 position['highest_profit_price'] = current_price
                 symbol_info = self.mt5.get_symbol_info(symbol)
                 point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-                trailing_distance = position['trailing_stop_distance_pips'] * point * 10
+
+                # FIXED: Removed * 10 from trailing distance calculation
+                trailing_distance = position['trailing_stop_distance_pips'] * point
                 new_stop = current_price - trailing_distance
 
                 if new_stop > position['trailing_stop_price']:
                     old_stop = position['trailing_stop_price']
                     position['trailing_stop_price'] = new_stop
-                    pips_moved = (new_stop - old_stop) / (point * 10)
+
+                    # FIXED: Removed * 10 from pips calculation
+                    pips_moved = (new_stop - old_stop) / point
                     logger.debug(f"[TRAIL] #{ticket} stop moved UP {pips_moved:.1f} pips to {new_stop:.5f}")
         else:  # sell
             if current_price < position['highest_profit_price']:
@@ -2465,13 +2629,17 @@ class RecoveryManager:
                 position['highest_profit_price'] = current_price
                 symbol_info = self.mt5.get_symbol_info(symbol)
                 point = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
-                trailing_distance = position['trailing_stop_distance_pips'] * point * 10
+
+                # FIXED: Removed * 10 from trailing distance calculation
+                trailing_distance = position['trailing_stop_distance_pips'] * point
                 new_stop = current_price + trailing_distance
 
                 if new_stop < position['trailing_stop_price']:
                     old_stop = position['trailing_stop_price']
                     position['trailing_stop_price'] = new_stop
-                    pips_moved = (old_stop - new_stop) / (point * 10)
+
+                    # FIXED: Removed * 10 from pips calculation
+                    pips_moved = (old_stop - new_stop) / point
                     logger.debug(f"[TRAIL] #{ticket} stop moved DOWN {pips_moved:.1f} pips to {new_stop:.5f}")
 
     def check_trailing_stop(self, ticket: int, current_price: float) -> bool:
@@ -2756,9 +2924,15 @@ class RecoveryManager:
 
                     logger.info(f"[HEDGE DCA CONFIRMED] M15 shows trend away from hedge direction - hedge DCA allowed")
 
-                # Calculate DCA volume (increase by multiplier)
-                hedge_volume = hedge_info.get('volume', 0)
-                dca_volume = hedge_volume * (dca_multiplier ** current_dca_count)
+                # FIXED: Calculate DCA volume matching regular DCA logic (iterative multiplication)
+                # First level: hedge_volume × 1.2, Second level: previous × 1.2
+                if current_dca_count == 0:
+                    hedge_volume = hedge_info.get('volume', 0)
+                    dca_volume = hedge_volume * dca_multiplier
+                else:
+                    last_dca = hedge_dca_levels[-1]
+                    dca_volume = last_dca['volume'] * dca_multiplier
+
                 dca_volume = round_volume_to_step(dca_volume)
 
                 # CRITICAL: DCA goes in ORIGINAL direction (opposite of hedge!)

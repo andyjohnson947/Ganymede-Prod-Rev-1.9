@@ -284,10 +284,24 @@ class MT5Manager:
             # MARKET ORDER: Immediate execution at current market price
             if order_type.lower() == 'buy':
                 order_type_mt5 = mt5.ORDER_TYPE_BUY
-                price = mt5.symbol_info_tick(symbol).ask if price is None else price
+
+                # FIXED: Add None check before accessing tick attributes
+                if price is None:
+                    tick = mt5.symbol_info_tick(symbol)
+                    if tick is None:
+                        print(f"[ERROR] Failed to get tick price for {symbol}")
+                        return None
+                    price = tick.ask
             else:
                 order_type_mt5 = mt5.ORDER_TYPE_SELL
-                price = mt5.symbol_info_tick(symbol).bid if price is None else price
+
+                # FIXED: Add None check before accessing tick attributes
+                if price is None:
+                    tick = mt5.symbol_info_tick(symbol)
+                    if tick is None:
+                        print(f"[ERROR] Failed to get tick price for {symbol}")
+                        return None
+                    price = tick.bid
 
             action = mt5.TRADE_ACTION_DEAL
 
