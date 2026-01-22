@@ -221,6 +221,34 @@ TREND_BLOCK_MINUTES = 60
 CASCADE_ADX_THRESHOLD = 25
 
 # =============================================================================
+# ADX HARD STOP PROTECTION (TOGGLE FOR ML-RECOMMENDED APPROACH)
+# =============================================================================
+# ML Analysis shows 65.9% better performance with ADX hard stops vs recovery
+# When enabled: ADX > 30 triggers -50 pip hard SL and blocks ALL recovery
+# When disabled: Current recovery system (DCA/Hedge) operates normally
+#
+# See analysis: ml_system/outputs/adx_vs_recovery_comparison.json
+# Result: ADX stops made $13.01 more profit (65.9% improvement) over 10 days
+
+# Master toggle for ADX-conditional hard stops
+ENABLE_ADX_HARD_STOPS = True  # ML-recommended: 65.9% better performance
+
+# ADX threshold for hard stop activation
+# Above this = trending market, apply hard stop and block recovery
+ADX_HARD_STOP_THRESHOLD = 30
+
+# Hard stop distance in pips (applied when ADX > threshold)
+# This is a FIXED stop, not trailing
+ADX_HARD_STOP_PIPS = 50  # -50 pips = ~$2.50 loss on 0.04 lot
+
+# When ADX hard stops are enabled, also block recovery during spread hours
+# Spread hours: 0, 9, 13, 20, 21 GMT (identified by ML as high-risk)
+BLOCK_RECOVERY_SPREAD_HOURS = True  # Recommended: True
+
+# Spread hours to avoid recovery (when BLOCK_RECOVERY_SPREAD_HOURS = True)
+SPREAD_HOURS = [0, 9, 13, 20, 21]  # GMT hours
+
+# =============================================================================
 # RISK MANAGEMENT (AGGRESSIVE SETTINGS)
 # =============================================================================
 

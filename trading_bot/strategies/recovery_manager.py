@@ -1372,13 +1372,33 @@ class RecoveryManager:
                 logger.debug(f"[GRID BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
                 return None
 
-            # ADX-CONDITIONAL RECOVERY BLOCKING
-            # If position opened during trending market (ADX > 30), NO recovery allowed
-            # Hard SL at -50 pips already set, let it hit cleanly
-            open_adx = position.get('open_adx', 0.0)
-            if open_adx > 30:
-                logger.info(f"[GRID BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
-                return None
+            # ADX-CONDITIONAL RECOVERY BLOCKING (CONFIGURABLE)
+            # When ENABLE_ADX_HARD_STOPS = True:
+            #   If position opened during trending market (ADX > threshold), NO recovery allowed
+            #   Hard SL already set, let it hit cleanly
+            # When ENABLE_ADX_HARD_STOPS = False:
+            #   Normal recovery behavior (allow grid regardless of ADX)
+            from config.strategy_config import (
+                ENABLE_ADX_HARD_STOPS,
+                ADX_HARD_STOP_THRESHOLD,
+                BLOCK_RECOVERY_SPREAD_HOURS,
+                SPREAD_HOURS
+            )
+
+            if ENABLE_ADX_HARD_STOPS:
+                open_adx = position.get('open_adx', 0.0)
+                if open_adx > ADX_HARD_STOP_THRESHOLD:
+                    logger.info(f"[GRID BLOCKED] ADX hard stops enabled - Position {ticket} opened during trending market (ADX: {open_adx:.1f} > {ADX_HARD_STOP_THRESHOLD}) - NO recovery allowed")
+                    return None
+
+            # SPREAD HOUR RECOVERY BLOCKING (CONFIGURABLE)
+            # Block recovery during spread hours to avoid cascade during spread widening
+            if BLOCK_RECOVERY_SPREAD_HOURS:
+                from trading_bot.utils.timezone_manager import get_current_time
+                current_hour = get_current_time().hour
+                if current_hour in SPREAD_HOURS:
+                    logger.info(f"[GRID BLOCKED] Spread hour blocking enabled - Current hour {current_hour} is a spread hour - NO recovery allowed")
+                    return None
 
             # ENHANCED LOGGING: Log current grid state for debugging
             logger.debug(f"[GRID CHECK] Position {ticket} ({symbol}):")
@@ -1615,13 +1635,33 @@ class RecoveryManager:
                 logger.debug(f"[HEDGE BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
                 return None
 
-            # ADX-CONDITIONAL RECOVERY BLOCKING
-            # If position opened during trending market (ADX > 30), NO recovery allowed
-            # Hard SL at -50 pips already set, let it hit cleanly
-            open_adx = position.get('open_adx', 0.0)
-            if open_adx > 30:
-                logger.info(f"[HEDGE BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
-                return None
+            # ADX-CONDITIONAL RECOVERY BLOCKING (CONFIGURABLE)
+            # When ENABLE_ADX_HARD_STOPS = True:
+            #   If position opened during trending market (ADX > threshold), NO recovery allowed
+            #   Hard SL already set, let it hit cleanly
+            # When ENABLE_ADX_HARD_STOPS = False:
+            #   Normal recovery behavior (allow hedge regardless of ADX)
+            from config.strategy_config import (
+                ENABLE_ADX_HARD_STOPS,
+                ADX_HARD_STOP_THRESHOLD,
+                BLOCK_RECOVERY_SPREAD_HOURS,
+                SPREAD_HOURS
+            )
+
+            if ENABLE_ADX_HARD_STOPS:
+                open_adx = position.get('open_adx', 0.0)
+                if open_adx > ADX_HARD_STOP_THRESHOLD:
+                    logger.info(f"[HEDGE BLOCKED] ADX hard stops enabled - Position {ticket} opened during trending market (ADX: {open_adx:.1f} > {ADX_HARD_STOP_THRESHOLD}) - NO recovery allowed")
+                    return None
+
+            # SPREAD HOUR RECOVERY BLOCKING (CONFIGURABLE)
+            # Block recovery during spread hours to avoid cascade during spread widening
+            if BLOCK_RECOVERY_SPREAD_HOURS:
+                from trading_bot.utils.timezone_manager import get_current_time
+                current_hour = get_current_time().hour
+                if current_hour in SPREAD_HOURS:
+                    logger.info(f"[HEDGE BLOCKED] Spread hour blocking enabled - Current hour {current_hour} is a spread hour - NO recovery allowed")
+                    return None
 
             # ENHANCED LOGGING: Log current hedge state for debugging
             logger.debug(f"[HEDGE CHECK] Position {ticket} ({symbol}):")
@@ -1884,13 +1924,33 @@ class RecoveryManager:
             logger.debug(f"[DCA BLOCKED] Position {ticket} is a recovery order - NO recovery-on-recovery allowed (prevent cascade)")
             return None
 
-        # ADX-CONDITIONAL RECOVERY BLOCKING
-        # If position opened during trending market (ADX > 30), NO recovery allowed
-        # Hard SL at -50 pips already set, let it hit cleanly
-        open_adx = position.get('open_adx', 0.0)
-        if open_adx > 30:
-            logger.info(f"[DCA BLOCKED] Position {ticket} opened during trending market (ADX: {open_adx:.1f}) - NO recovery allowed")
-            return None
+        # ADX-CONDITIONAL RECOVERY BLOCKING (CONFIGURABLE)
+        # When ENABLE_ADX_HARD_STOPS = True:
+        #   If position opened during trending market (ADX > threshold), NO recovery allowed
+        #   Hard SL already set, let it hit cleanly
+        # When ENABLE_ADX_HARD_STOPS = False:
+        #   Normal recovery behavior (allow DCA regardless of ADX)
+        from config.strategy_config import (
+            ENABLE_ADX_HARD_STOPS,
+            ADX_HARD_STOP_THRESHOLD,
+            BLOCK_RECOVERY_SPREAD_HOURS,
+            SPREAD_HOURS
+        )
+
+        if ENABLE_ADX_HARD_STOPS:
+            open_adx = position.get('open_adx', 0.0)
+            if open_adx > ADX_HARD_STOP_THRESHOLD:
+                logger.info(f"[DCA BLOCKED] ADX hard stops enabled - Position {ticket} opened during trending market (ADX: {open_adx:.1f} > {ADX_HARD_STOP_THRESHOLD}) - NO recovery allowed")
+                return None
+
+        # SPREAD HOUR RECOVERY BLOCKING (CONFIGURABLE)
+        # Block recovery during spread hours to avoid cascade during spread widening
+        if BLOCK_RECOVERY_SPREAD_HOURS:
+            from trading_bot.utils.timezone_manager import get_current_time
+            current_hour = get_current_time().hour
+            if current_hour in SPREAD_HOURS:
+                logger.info(f"[DCA BLOCKED] Spread hour blocking enabled - Current hour {current_hour} is a spread hour - NO recovery allowed")
+                return None
 
         # CRITICAL: Prevent DCA-on-hedge and DCA-on-DCA cascades
         # Orphaned positions (hedge/DCA that lost parent) should NOT trigger their own recovery
