@@ -14,6 +14,7 @@ import pandas as pd
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import time
+import logging
 
 from core.mt5_manager import MT5Manager
 from strategies.signal_detector import SignalDetector
@@ -46,6 +47,9 @@ from config.strategy_config import (
     HEDGE_ENABLED,              # Startup diagnostics
     ENABLE_TIME_FILTERS,        # Startup diagnostics
 )
+
+# Module-level logger
+logger = logging.getLogger('ConfluenceStrategy')
 
 
 class ConfluenceStrategy:
