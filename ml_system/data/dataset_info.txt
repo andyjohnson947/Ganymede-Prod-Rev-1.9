@@ -1,14 +1,14 @@
 ML DATASET INFORMATION
 ================================================================================
-Generated: 2026-01-22 00:06:10
+Generated: 2026-01-22 06:51:21
 Source: ml_system/outputs/continuous_trade_log.jsonl
 Output: ml_system/data/training_data.csv
 ================================================================================
 
-Total samples: 49
+Total samples: 59
 Features: 88
-Win rate: 67.35%
-Wins: 33
+Win rate: 72.88%
+Wins: 43
 Losses: 16
 
 Feature List:
