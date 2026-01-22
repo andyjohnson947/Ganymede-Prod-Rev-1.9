@@ -3202,7 +3202,7 @@ class RecoveryManager:
                 # M15 SAFEGUARD: Only add hedge DCA if M15 confirms trend moving away from hedge
                 # This prevents hedge DCA on temporary spikes that might reverse
                 if m15_data is not None and len(m15_data) >= 3:
-                    # Check last 3 M15 candles
+                    # Check last 3 M15 candles (FIXED: iterate backwards from most recent)
                     recent_candles = m15_data.tail(3)
 
                     # Determine which direction we need for confirmation
@@ -3210,8 +3210,10 @@ class RecoveryManager:
                     # Hedge BUY losing → Market going DOWN → Need bearish candles
                     if hedge_type == 'sell':
                         # Hedge SELL losing, need bullish M15 confirmation
+                        # FIXED: Count backwards from most recent candle (like regular DCA/hedge blocking)
                         consecutive_bullish = 0
-                        for idx, candle in recent_candles.iterrows():
+                        for idx in range(len(recent_candles) - 1, -1, -1):
+                            candle = recent_candles.iloc[idx]
                             if candle['close'] > candle['open']:  # Bullish
                                 consecutive_bullish += 1
                             else:
@@ -3223,8 +3225,10 @@ class RecoveryManager:
                             continue
                     else:  # hedge_type == 'buy'
                         # Hedge BUY losing, need bearish M15 confirmation
+                        # FIXED: Count backwards from most recent candle (like regular DCA/hedge blocking)
                         consecutive_bearish = 0
-                        for idx, candle in recent_candles.iterrows():
+                        for idx in range(len(recent_candles) - 1, -1, -1):
+                            candle = recent_candles.iloc[idx]
                             if candle['close'] < candle['open']:  # Bearish
                                 consecutive_bearish += 1
                             else:
