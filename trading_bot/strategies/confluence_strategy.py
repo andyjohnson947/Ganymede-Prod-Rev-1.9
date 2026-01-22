@@ -18,6 +18,7 @@ from utils.risk_calculator import RiskCalculator
 from utils.config_reloader import reload_config, print_current_config
 from utils.timezone_manager import get_current_time
 from portfolio.portfolio_manager import PortfolioManager
+from ml_system.ml_integration_manager import MLIntegrationManager
 from config.strategy_config import (
     SYMBOLS,
     TIMEFRAME,
@@ -59,6 +60,12 @@ class ConfluenceStrategy:
         self.mt5 = mt5_manager
         self.test_mode = test_mode
         self.ml_logger = ml_logger  # ML logger for real-time event tracking
+
+        # Initialize ML Integration Manager for enhanced data collection
+        if self.debug:
+            print("[DEBUG] Creating MLIntegrationManager...", flush=True)
+        self.ml_manager = MLIntegrationManager(enable_adaptive_weighting=True)
+
         if self.debug:
             print("[DEBUG] Creating SignalDetector...", flush=True)
         self.signal_detector = SignalDetector(ml_logger=self.ml_logger, debug=self.debug)
@@ -263,8 +270,26 @@ class ConfluenceStrategy:
         print(f"   Time Filters: {'Disabled (trade 24/7)' if not ENABLE_TIME_FILTERS else 'Enabled'}")
 
         print()
-        print("=" * 80)
-        print()
+
+        # ML System status
+        print("🤖 ML Integration:")
+        print(f"   Enhanced Data Collection: Active")
+        print(f"   Adaptive Confluence: {'Active' if self.ml_manager.confluence_analyzer else 'Pending data'}")
+        print(f"   Logging: Trade entries, recovery decisions, market conditions")
+        print(f"   Output: ml_system/outputs/")
+        print(f"   Note: You maintain full control - ML observes and recommends")
+
+        # Show ML insights from recent data
+        try:
+            from ml_system.ml_insights_reporter import MLInsightsReporter
+            reporter = MLInsightsReporter()
+            insights_report = reporter.format_startup_report()
+            print(insights_report)
+        except Exception as e:
+            print(f"\n⚠️  ML insights unavailable: {e}")
+            print("   (Will be available after first trades are logged)\n")
+            print("=" * 80)
+            print()
 
         self.running = True
         loop_iteration = 0
@@ -1444,6 +1469,53 @@ class ConfluenceStrategy:
                     is_recovery_order=False,
                     open_adx=current_adx  # Store ADX at entry time
                 )
+
+                # ML LOGGING: Log trade entry with enhanced data
+                try:
+                    # Get current spread
+                    tick = self.mt5.get_symbol_tick(symbol)
+                    spread_pips = 0
+                    if tick:
+                        spread = tick.get('ask', 0) - tick.get('bid', 0)
+                        point = symbol_info.get('point', 0.0001)
+                        spread_pips = spread / point
+
+                    # Get ATR from market data
+                    atr_pips = 0
+                    if symbol in self.market_data_cache:
+                        h1_data = self.market_data_cache[symbol]['h1']
+                        if 'atr' in h1_data.columns and len(h1_data) > 0:
+                            atr = h1_data.iloc[-1]['atr']
+                            atr_pips = atr / symbol_info.get('point', 0.0001)
+
+                    # Get confluence factors from signal
+                    confluence_factors = signal.get('factors', [])
+
+                    # Prepare trade data for ML logging
+                    trade_data = {
+                        'ticket': ticket,
+                        'symbol': symbol,
+                        'direction': direction,
+                        'entry_price': actual_entry_price,
+                        'expected_price': price,
+                        'volume': volume,
+                        'spread_at_entry_pips': spread_pips,
+                        'confluence_score': signal.get('confluence_score', 0),
+                        'confluence_factors': confluence_factors,
+                        'adx': current_adx,
+                        'atr_pips': atr_pips,
+                        'hour': get_current_time().hour,
+                        'strategy_type': signal.get('strategy_type', 'unknown')
+                    }
+
+                    # Log to ML manager
+                    self.ml_manager.log_trade_entry(trade_data)
+
+                    if self.debug:
+                        print(f"[DEBUG] ML: Logged trade entry for {ticket}", flush=True)
+
+                except Exception as e:
+                    print(f"[WARN] ML logging failed for {ticket}: {e}")
             else:
                 print(f"[ERROR] Failed to open trade #{i+1}")
 
@@ -1501,6 +1573,63 @@ class ConfluenceStrategy:
         volume = action['volume']
         comment = action['comment']
         original_ticket = action.get('original_ticket')
+
+        # ML LOGGING: Log recovery decision before execution
+        if action_type in ['dca', 'hedge'] and original_ticket:
+            try:
+                # Get current position data
+                all_positions = self.mt5.get_positions()
+                original_pos = None
+                for pos in all_positions:
+                    if pos['ticket'] == original_ticket:
+                        original_pos = pos
+                        break
+
+                if original_pos and original_ticket in self.recovery_manager.tracked_positions:
+                    tracked_pos = self.recovery_manager.tracked_positions[original_ticket]
+                    symbol_info = self.mt5.get_symbol_info(symbol)
+                    pip_value = symbol_info.get('point', 0.0001) if symbol_info else 0.0001
+
+                    # Calculate pips underwater
+                    entry_price = tracked_pos.get('entry_price', 0)
+                    current_price = original_pos.get('price_current', 0)
+                    pos_type = tracked_pos.get('type')
+
+                    if pos_type == 'buy':
+                        pips_underwater = (current_price - entry_price) / pip_value
+                    else:
+                        pips_underwater = (entry_price - current_price) / pip_value
+
+                    # Get ADX at trigger
+                    adx_at_trigger = 0
+                    if symbol in self.market_data_cache:
+                        h1_data = self.market_data_cache[symbol]['h1']
+                        if 'adx' in h1_data.columns and len(h1_data) > 0:
+                            adx_at_trigger = h1_data.iloc[-1]['adx']
+
+                    # Get ADX at entry
+                    adx_at_entry = tracked_pos.get('open_adx', 0)
+
+                    # Prepare recovery decision data
+                    recovery_data = {
+                        'ticket': original_ticket,
+                        'type': action_type.upper(),
+                        'pips_underwater': pips_underwater,
+                        'unrealized_pnl': original_pos.get('profit', 0),
+                        'adx_at_entry': adx_at_entry,
+                        'adx_at_trigger': adx_at_trigger,
+                        'was_blocked': False,  # It's executing, so not blocked
+                        'recovery_placed': True
+                    }
+
+                    # Log to ML manager
+                    self.ml_manager.log_recovery_decision(recovery_data)
+
+                    if self.debug:
+                        print(f"[DEBUG] ML: Logged {action_type} recovery for {original_ticket}", flush=True)
+
+            except Exception as e:
+                print(f"[WARN] ML recovery logging failed: {e}")
 
         # Get calculated price for grid trades (if provided)
         # Grid trades should execute at specific price levels, not market price

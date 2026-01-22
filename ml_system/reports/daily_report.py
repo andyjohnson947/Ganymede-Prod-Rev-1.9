@@ -133,12 +133,17 @@ class DailyReportGenerator:
         cutoff = datetime.now() - timedelta(days=days)
         trades = []
 
-        trade_log_file = 'ml_system/outputs/continuous_trade_log.jsonl'
+        # Use new enhanced trade log instead of continuous logger
+        trade_log_file = 'ml_system/outputs/enhanced_trade_log.jsonl'
+
+        # Fallback to old log if new one doesn't exist yet
+        if not os.path.exists(trade_log_file):
+            trade_log_file = 'ml_system/outputs/continuous_trade_log.jsonl'
 
         # Check if file exists
         if not os.path.exists(trade_log_file):
             logger.warning(f"Trade log file not found: {trade_log_file}")
-            logger.warning("Continuous logger may not be running. Start it with: python ml_system/continuous_logger.py")
+            logger.warning("Enhanced ML logging will be available after first trades")
             return []
 
         try:
@@ -558,6 +563,70 @@ class DailyReportGenerator:
         report.append("-" * 80)
         for rec in param_recommendations:
             report.append(f"  {rec}")
+        report.append("")
+
+        # Section 5.5: Adaptive Confluence Analysis (NEW)
+        report.append("5.5 ADAPTIVE CONFLUENCE WEIGHTING (ML-Learned Optimal Weights)")
+        report.append("-" * 80)
+        try:
+            from ml_system.ml_insights_reporter import MLInsightsReporter
+            ml_reporter = MLInsightsReporter()
+            insights = ml_reporter.get_quick_insights(days=7)
+
+            # Show winning factors
+            if insights['winning_factors']:
+                report.append("  TOP PERFORMING CONFLUENCE FACTORS:")
+                for factor in insights['winning_factors']:
+                    report.append(f"    ✅ {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
+                    report.append(f"       Recommended Weight: 4-5 (High confidence)")
+                report.append("")
+
+            # Show losing factors
+            if insights['losing_factors']:
+                report.append("  UNDERPERFORMING CONFLUENCE FACTORS:")
+                for factor in insights['losing_factors']:
+                    report.append(f"    ❌ {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
+                    report.append(f"       Recommended Weight: 1-2 (Low confidence)")
+                report.append("")
+
+            # Recovery recommendations
+            if insights['recovery_performance']:
+                recovery = insights['recovery_performance']
+                report.append("  RECOVERY SYSTEM EFFECTIVENESS:")
+                if recovery['dca_used'] > 0:
+                    report.append(f"    DCA: {recovery['dca_win_rate']:.0f}% recovery rate ({recovery['dca_wins']}/{recovery['dca_used']} trades)")
+                    if recovery['dca_win_rate'] >= 70:
+                        report.append(f"      ✅ DCA working well - keep current settings")
+                    elif recovery['dca_win_rate'] <= 40:
+                        report.append(f"      ⚠️  DCA struggling - consider earlier triggers or higher multiplier")
+                if recovery['hedge_used'] > 0:
+                    report.append(f"    Hedge: {recovery['hedge_win_rate']:.0f}% recovery rate ({recovery['hedge_wins']}/{recovery['hedge_used']} trades)")
+                    if recovery['hedge_win_rate'] >= 70:
+                        report.append(f"      ✅ Hedge working well - keep current settings")
+                    elif recovery['hedge_win_rate'] <= 40:
+                        report.append(f"      ⚠️  Hedge struggling - consider earlier triggers or higher ratio")
+                report.append("")
+
+            # Best trading hours
+            if insights['best_hours']:
+                report.append("  BEST TRADING HOURS (Highest Win Rate):")
+                for hour_stat in insights['best_hours']:
+                    report.append(f"    {hour_stat['hour']:02d}:00 - {hour_stat['win_rate']*100:.0f}% WR (${hour_stat['avg_profit']:.2f} avg, n={hour_stat['count']})")
+                report.append("")
+
+            # Data collection status
+            data_status = ml_reporter.get_data_status()
+            report.append("  ML DATA COLLECTION STATUS:")
+            report.append(f"    Total Trades Logged: {data_status['trades_logged']}")
+            report.append(f"    Recovery Decisions: {data_status['recovery_decisions']}")
+            trades_needed = 50 - data_status['trades_logged']
+            analysis_ready = 'Yes' if data_status['ready_for_analysis'] else f'No (need {trades_needed} more trades)'
+            report.append(f"    Analysis Ready: {analysis_ready}")
+            report.append("")
+
+        except Exception as e:
+            report.append(f"  [INFO] Adaptive confluence analysis unavailable: {e}")
+            report.append(f"  Enhanced ML logging will provide insights after collecting 10+ trades")
         report.append("")
 
         # Section 6: Feature Importance (Top 10)
