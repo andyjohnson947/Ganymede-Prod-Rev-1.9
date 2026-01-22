@@ -3,6 +3,13 @@ Main Confluence Strategy
 Orchestrates signal detection, position management, and recovery
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to path for ml_system imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 import pandas as pd
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
