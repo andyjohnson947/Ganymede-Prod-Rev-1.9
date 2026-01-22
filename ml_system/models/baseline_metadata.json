@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-01-21T08:44:23.978510",
+  "timestamp": "2026-01-22T00:06:12.429765",
   "model_type": "RandomForestClassifier",
   "n_estimators": 100,
   "max_depth": 10,
-  "training_samples": 21,
-  "validation_samples": 6,
+  "training_samples": 39,
+  "validation_samples": 10,
   "features": 88,
   "train_accuracy": 1.0,
   "val_accuracy": 1.0,
