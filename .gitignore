@@ -61,3 +61,4 @@ Thumbs.db
 ml_system/reports/daily/*.txt
 ml_system/logs/*.log
 ml_system/outputs/*.jsonl
+ml_system/outputs/adaptive_confluence_weights.json
