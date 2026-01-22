@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-22T07:28:33.125187",
+  "timestamp": "2026-01-22T09:14:49.172037",
   "tracked_positions": {
     "1422732506": {
       "ticket": 1422732506,
@@ -11,11 +11,11 @@
       "grid_levels": [],
       "hedge_tickets": [
         {
-          "ticket": 1422738318,
+          "ticket": 1422827598,
           "type": "buy",
           "volume": 0.06,
           "trigger_pips": 0,
-          "time": "2026-01-22T08:55:29+00:00",
+          "time": "2026-01-22T09:54:46+00:00",
           "dca_levels": []
         }
       ],
@@ -34,11 +34,11 @@
         }
       ],
       "total_volume": 0.15,
-      "max_underwater_pips": 86.99999999999262,
+      "max_underwater_pips": 131.99999999999878,
       "recovery_active": true,
       "open_time": "2026-01-22T11:50:57.037305+00:00",
       "open_adx": 10.681084010725847,
-      "last_hedge_time": "2026-01-22T11:55:23.580140+00:00",
+      "last_hedge_time": "2026-01-22T12:54:40.499569+00:00",
       "last_grid_time": null,
       "last_dca_time": "2026-01-22T11:55:23.580140+00:00",
       "is_grid_child": false,
@@ -60,11 +60,11 @@
       "grid_levels": [],
       "hedge_tickets": [
         {
-          "ticket": 1422738332,
+          "ticket": 1423000245,
           "type": "buy",
           "volume": 0.06,
           "trigger_pips": 0,
-          "time": "2026-01-22T08:55:29+00:00",
+          "time": "2026-01-22T11:00:49+00:00",
           "dca_levels": []
         }
       ],
@@ -87,7 +87,7 @@
       "recovery_active": true,
       "open_time": "2026-01-22T11:50:57.306796+00:00",
       "open_adx": 10.681084010725847,
-      "last_hedge_time": "2026-01-22T11:55:24.112434+00:00",
+      "last_hedge_time": "2026-01-22T14:00:48.757303+00:00",
       "last_grid_time": null,
       "last_dca_time": "2026-01-22T11:55:24.119427+00:00",
       "is_grid_child": false,
@@ -99,86 +99,6 @@
       "trailing_stop_distance_pips": 0,
       "trailing_stop_price": 0.0,
       "highest_profit_price": 1.34323
-    },
-    "1422732997": {
-      "ticket": 1422732997,
-      "symbol": "EURUSD",
-      "entry_price": 1.17029,
-      "type": "sell",
-      "initial_volume": 0.03,
-      "grid_levels": [],
-      "hedge_tickets": [],
-      "dca_levels": [
-        {
-          "ticket": 1422782452,
-          "level": 1,
-          "volume": 0.04,
-          "time": "2026-01-22T09:21:32+00:00"
-        },
-        {
-          "ticket": 1422784796,
-          "level": 2,
-          "volume": 0.05,
-          "time": "2026-01-22T09:23:32+00:00"
-        }
-      ],
-      "total_volume": 0.12,
-      "max_underwater_pips": 62.00000000000649,
-      "recovery_active": true,
-      "open_time": "2026-01-22T11:51:21.690414+00:00",
-      "open_adx": 18.560728590683915,
-      "last_hedge_time": null,
-      "last_grid_time": null,
-      "last_dca_time": "2026-01-22T12:23:27.164567+00:00",
-      "is_grid_child": false,
-      "is_recovery_order": false,
-      "partial_1_closed": true,
-      "partial_2_closed": false,
-      "pc2_trigger_time": null,
-      "trailing_stop_active": false,
-      "trailing_stop_distance_pips": 0,
-      "trailing_stop_price": 0.0,
-      "highest_profit_price": 1.17029
-    },
-    "1422733003": {
-      "ticket": 1422733003,
-      "symbol": "EURUSD",
-      "entry_price": 1.17029,
-      "type": "sell",
-      "initial_volume": 0.03,
-      "grid_levels": [],
-      "hedge_tickets": [],
-      "dca_levels": [
-        {
-          "ticket": 1422782457,
-          "level": 1,
-          "volume": 0.04,
-          "time": "2026-01-22T09:21:32+00:00"
-        },
-        {
-          "ticket": 1422784804,
-          "level": 2,
-          "volume": 0.05,
-          "time": "2026-01-22T09:23:33+00:00"
-        }
-      ],
-      "total_volume": 0.12,
-      "max_underwater_pips": 62.00000000000649,
-      "recovery_active": true,
-      "open_time": "2026-01-22T11:51:21.955414+00:00",
-      "open_adx": 18.560728590683915,
-      "last_hedge_time": null,
-      "last_grid_time": null,
-      "last_dca_time": "2026-01-22T12:23:27.450820+00:00",
-      "is_grid_child": false,
-      "is_recovery_order": false,
-      "partial_1_closed": true,
-      "partial_2_closed": false,
-      "pc2_trigger_time": null,
-      "trailing_stop_active": false,
-      "trailing_stop_distance_pips": 0,
-      "trailing_stop_price": 0.0,
-      "highest_profit_price": 1.17029
     }
   },
   "archived_positions": [

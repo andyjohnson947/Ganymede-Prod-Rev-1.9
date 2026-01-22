@@ -98,8 +98,8 @@ TREND_FILTER_ENABLED = True
 
 # ADX parameters
 ADX_PERIOD = 14  # Standard ADX period
-ADX_THRESHOLD = 25  # Above this = trending market
-ADX_STRONG_THRESHOLD = 40  # Above this = strong trend (never trade)
+ADX_THRESHOLD = 20  # Above this = trending market
+ADX_STRONG_THRESHOLD = 35  # Above this = strong trend (never trade)
 
 # Candle direction lookback
 CANDLE_LOOKBACK = 5  # Number of recent candles to analyze
