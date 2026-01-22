@@ -279,9 +279,17 @@ class ConfluenceStrategy:
         print(f"   Output: ml_system/outputs/")
         print(f"   Note: You maintain full control - ML observes and recommends")
 
-        print()
-        print("=" * 80)
-        print()
+        # Show ML insights from recent data
+        try:
+            from ml_system.ml_insights_reporter import MLInsightsReporter
+            reporter = MLInsightsReporter()
+            insights_report = reporter.format_startup_report()
+            print(insights_report)
+        except Exception as e:
+            print(f"\n⚠️  ML insights unavailable: {e}")
+            print("   (Will be available after first trades are logged)\n")
+            print("=" * 80)
+            print()
 
         self.running = True
         loop_iteration = 0
