@@ -285,7 +285,7 @@ BREAKOUT_ENABLED = False
 # Enable time filtering (False = trade all hours for enabled strategies)
 # If False, enabled strategies will trade 24/7 regardless of configured windows
 # TESTING: Disabled to rely solely on ADX & candle lookback filters
-ENABLE_TIME_FILTERS = True
+ENABLE_TIME_FILTERS = False
 
 # ============================================================================
 
