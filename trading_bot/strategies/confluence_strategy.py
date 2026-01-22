@@ -1364,17 +1364,26 @@ class ConfluenceStrategy:
             print(f"[ERROR] Cannot open {INITIAL_TRADE_COUNT} trades - would exceed MAX_TOTAL_LOTS limit")
             return
 
-        # ADX-CONDITIONAL HARD STOP LOGIC
-        # If ADX > 30 (trending market), apply hard SL at -50 pips to cut losses fast
-        # If ADX <= 30 (ranging/moderate), allow recovery system to work (no hard SL)
+        # ADX-CONDITIONAL HARD STOP LOGIC (CONFIGURABLE)
+        # When ENABLE_ADX_HARD_STOPS = True:
+        #   If ADX > threshold (trending market), apply hard SL to cut losses fast
+        #   If ADX <= threshold (ranging/moderate), allow recovery system to work
+        # When ENABLE_ADX_HARD_STOPS = False:
+        #   Normal recovery system behavior (current system)
+        from config.strategy_config import (
+            ENABLE_ADX_HARD_STOPS,
+            ADX_HARD_STOP_THRESHOLD,
+            ADX_HARD_STOP_PIPS
+        )
+
         current_adx = signal.get('adx', 0.0)
         hard_sl = None
 
-        if current_adx > 30:
-            # Calculate -50 pip stop loss
+        if ENABLE_ADX_HARD_STOPS and current_adx > ADX_HARD_STOP_THRESHOLD:
+            # Calculate hard stop loss at configured pip distance
             symbol_info = self.mt5.get_symbol_info(symbol)
             point = symbol_info.get('point', 0.0001)
-            pip_distance = 50 * point  # 50 pips
+            pip_distance = ADX_HARD_STOP_PIPS * point
 
             # Get current price for SL calculation
             tick = self.mt5.get_symbol_tick(symbol)
@@ -1385,8 +1394,8 @@ class ConfluenceStrategy:
                 else:
                     hard_sl = current_price + pip_distance  # SL above entry for SELL
 
-                print(f" ADX TRENDING MARKET DETECTED (ADX: {current_adx:.1f})")
-                print(f"   Applying HARD SL at -50 pips: {hard_sl:.5f}")
+                print(f" [ADX HARD STOP] Trending market detected (ADX: {current_adx:.1f} > {ADX_HARD_STOP_THRESHOLD})")
+                print(f"   Applying HARD SL at -{ADX_HARD_STOP_PIPS} pips: {hard_sl:.5f}")
                 print(f"   Recovery (DCA/Hedge/Grid) will be BLOCKED for this position")
 
         # Place order(s) - open multiple trades if INITIAL_TRADE_COUNT > 1
