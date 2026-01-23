@@ -173,20 +173,20 @@ class ConfluenceStrategy:
         self.risk_calculator.set_initial_balance(account_info['balance'])
 
         # CRASH RECOVERY: Load saved state and reconcile with MT5 reality
-        print("🔄 Initializing crash recovery system...", flush=True)
+        print("[SYNC] Initializing crash recovery system...", flush=True)
         state_loaded = self.recovery_manager.load_state()
 
         # ALWAYS reconcile with MT5, even if state loaded (critical for crash recovery)
-        print("🔄 Reconciling tracked positions with MT5...", flush=True)
+        print("[SYNC] Reconciling tracked positions with MT5...", flush=True)
         added, removed, validated = self.recovery_manager.reconcile_on_startup(self.mt5)
 
         if state_loaded:
             print(f"[OK] State loaded and reconciled:")
-            print(f"   ✓ Validated: {validated} positions still open")
+            print(f"   [OK] Validated: {validated} positions still open")
             if removed > 0:
-                print(f"   🗑️  Removed: {removed} closed positions")
+                print(f"   [DEL]  Removed: {removed} closed positions")
             if added > 0:
-                print(f"   ➕ Added: {added} new positions from MT5")
+                print(f"   [+] Added: {added} new positions from MT5")
         else:
             if added > 0:
                 print(f"[OK] No saved state - discovered {added} MT5 positions")
@@ -196,13 +196,13 @@ class ConfluenceStrategy:
         print()
 
         # LOAD BLOCKING STATE: Restore cascade/trending blocks from previous session
-        print("📂 Loading blocking state...")
+        print("[LOAD] Loading blocking state...")
         blocks_loaded = self.load_blocking_state()
         if not blocks_loaded:
             print("[INFO] No previous blocks - starting with clean state")
 
         # MARKET STATE EVALUATION: Check market conditions on startup
-        print("📊 Evaluating market state for all symbols...")
+        print("[INFO] Evaluating market state for all symbols...")
         for symbol in symbols:
             # Fetch initial H1 data for market state evaluation
             h1_data = self.mt5.get_historical_data(symbol, TIMEFRAME, bars=500)
@@ -218,11 +218,11 @@ class ConfluenceStrategy:
                 self.market_trending_block[symbol] = should_block
 
                 if should_block:
-                    print(f"   ⚠️  {symbol}: Trading BLOCKED - {market_state.get('reason', 'Unknown')}")
+                    print(f"   [WARN]  {symbol}: Trading BLOCKED - {market_state.get('reason', 'Unknown')}")
                 else:
-                    print(f"   ✅ {symbol}: Trading ALLOWED - {market_state.get('reason', 'Unknown')}")
+                    print(f"   [OK] {symbol}: Trading ALLOWED - {market_state.get('reason', 'Unknown')}")
             else:
-                print(f"   ⚠️  {symbol}: Could not fetch market data")
+                print(f"   [WARN]  {symbol}: Could not fetch market data")
                 self.market_trending_block[symbol] = False  # Allow trading if data unavailable
 
         # Save blocking state after startup evaluation
@@ -237,7 +237,7 @@ class ConfluenceStrategy:
 
         # Check position limits
         all_positions = self.mt5.get_positions()
-        print(f"📊 Positions: {len(all_positions)}/{MAX_OPEN_POSITIONS} (max allowed)")
+        print(f"[INFO] Positions: {len(all_positions)}/{MAX_OPEN_POSITIONS} (max allowed)")
         for symbol in symbols:
             symbol_positions = [p for p in all_positions if p['symbol'] == symbol]
             print(f"   {symbol}: {len(symbol_positions)}/{MAX_POSITIONS_PER_SYMBOL}")
@@ -245,7 +245,7 @@ class ConfluenceStrategy:
         print()
 
         # Show blocking status for each symbol
-        print("🚦 Symbol Trading Status:")
+        print("[STATUS] Symbol Trading Status:")
         for symbol in symbols:
             status_parts = []
 
@@ -266,14 +266,14 @@ class ConfluenceStrategy:
 
             # Display status
             if status_parts:
-                print(f"   ⛔ {symbol}: BLOCKED - {', '.join(status_parts)}")
+                print(f"   [BLOCKED] {symbol}: BLOCKED - {', '.join(status_parts)}")
             else:
-                print(f"   ✅ {symbol}: READY TO TRADE")
+                print(f"   [OK] {symbol}: READY TO TRADE")
 
         print()
 
         # Show trading configuration
-        print("⚙️  Configuration:")
+        print("[CONFIG]  Configuration:")
         print(f"   Confluence Score: {MIN_CONFLUENCE_SCORE}+ required")
         print(f"   DCA: {'Enabled' if DCA_ENABLED else 'Disabled'}")
         print(f"   Hedge: {'Enabled' if HEDGE_ENABLED else 'Disabled'}")
@@ -283,7 +283,7 @@ class ConfluenceStrategy:
         print()
 
         # ML System status
-        print("🤖 ML Integration:")
+        print("[ML] ML Integration:")
         print(f"   Enhanced Data Collection: Active")
         print(f"   Adaptive Confluence: {'Active' if self.ml_manager.confluence_analyzer else 'Pending data'}")
         print(f"   Logging: Trade entries, recovery decisions, market conditions")
@@ -297,7 +297,7 @@ class ConfluenceStrategy:
             insights_report = reporter.format_startup_report()
             print(insights_report)
         except Exception as e:
-            print(f"\n⚠️  ML insights unavailable: {e}")
+            print(f"\n[WARN]  ML insights unavailable: {e}")
             print("   (Will be available after first trades are logged)\n")
             print("=" * 80)
             print()
@@ -305,7 +305,7 @@ class ConfluenceStrategy:
         self.running = True
         loop_iteration = 0
 
-        print("🟢 STARTING MAIN LOOP", flush=True)
+        print("[START] STARTING MAIN LOOP", flush=True)
         print(f"Scanning for confluence signals every 60 seconds...", flush=True)
         print()
 
@@ -462,11 +462,11 @@ class ConfluenceStrategy:
 
         # Log state changes
         if was_blocked and not should_block:
-            print(f"\n✅ {symbol}: Market state IMPROVED - Trading RESUMED")
+            print(f"\n[OK] {symbol}: Market state IMPROVED - Trading RESUMED")
             print(f"   {market_state.get('reason', 'Unknown')}")
             self.save_blocking_state()  # Save state change
         elif not was_blocked and should_block:
-            print(f"\n⚠️  {symbol}: Market state DEGRADED - Trading BLOCKED")
+            print(f"\n[WARN]  {symbol}: Market state DEGRADED - Trading BLOCKED")
             print(f"   {market_state.get('reason', 'Unknown')}")
             self.save_blocking_state()  # Save state change
 
@@ -534,7 +534,7 @@ class ConfluenceStrategy:
 
             # Emergency cascade threshold: -$100 total unrealized loss
             if total_unrealized <= -100:
-                print(f"\n🚨 CASCADE PROTECTION TRIGGERED 🚨")
+                print(f"\n[ALERT] CASCADE PROTECTION TRIGGERED [ALERT]")
                 print(f"   Total unrealized loss: ${total_unrealized:.2f}")
                 print(f"   Threshold: -$100.00")
                 print(f"   Open positions: {len(all_positions)}")
@@ -575,7 +575,7 @@ class ConfluenceStrategy:
                 for pos in positions:
                     if pos['profit'] < 0:
                         ticket = pos['ticket']
-                        print(f"🚪 Closing negative position {ticket} - {action.reason}")
+                        print(f"[CLOSE] Closing negative position {ticket} - {action.reason}")
                         if self.mt5.close_position(ticket):
                             self.recovery_manager.untrack_position(ticket)
                             self.stats['trades_closed'] += 1
@@ -718,7 +718,7 @@ class ConfluenceStrategy:
 
                             # MOVE HARDWARE SL TO BREAKEVEN
                             if self.mt5.modify_position(ticket, sl=entry_price):
-                                print(f"[PC2] Hardware SL → breakeven @ {entry_price:.5f}")
+                                print(f"[PC2] Hardware SL -> breakeven @ {entry_price:.5f}")
 
                                 # ML LOGGING: Log SL to BE
                                 if self.ml_logger:
@@ -1081,7 +1081,7 @@ class ConfluenceStrategy:
                             print(f"[VWAP] Closing entire recovery stack for {ticket}")
                             entry_price = position['price_open']
                             current_price = position['price_current']
-                            vwap_reason = f"VWAP Exit Signal (price reverted to VWAP: entry {entry_price:.5f} → VWAP {current_price:.5f})"
+                            vwap_reason = f"VWAP Exit Signal (price reverted to VWAP: entry {entry_price:.5f} -> VWAP {current_price:.5f})"
                             self._close_recovery_stack(ticket, reason=vwap_reason)
                         else:
                             # Standalone position (no recovery) - close normally
@@ -1130,7 +1130,7 @@ class ConfluenceStrategy:
         # Check if symbol is tradeable based on portfolio trading windows (bypass in test mode)
         if not self.test_mode and not self.portfolio_manager.is_symbol_tradeable(symbol):
             if self.debug:
-                print(f"   ⏰ {symbol}: Outside trading window", flush=True)
+                print(f"   [TIME] {symbol}: Outside trading window", flush=True)
             return  # Not in trading window for this symbol
 
         cache = self.market_data_cache[symbol]
@@ -1151,12 +1151,12 @@ class ConfluenceStrategy:
             can_trade_bo = self.time_filter.can_trade_breakout(current_time)
 
         if self.debug:
-            print(f"   📊 {symbol}: Checking signals (MR: {can_trade_mr}, BO: {can_trade_bo})...", flush=True)
+            print(f"   [INFO] {symbol}: Checking signals (MR: {can_trade_mr}, BO: {can_trade_bo})...", flush=True)
 
         # Try mean reversion signal first (if allowed)
         if can_trade_mr:
             if self.debug:
-                print(f"   🔍 {symbol}: Calling signal_detector.detect_signal()...", flush=True)
+                print(f"   [CHECK] {symbol}: Calling signal_detector.detect_signal()...", flush=True)
             signal = self.signal_detector.detect_signal(
                 current_data=h1_data,
                 daily_data=d1_data,
@@ -1165,17 +1165,17 @@ class ConfluenceStrategy:
                 m15_data=m15_data  # Pass M15 for fast trend detection
             )
             if self.debug:
-                print(f"   🔍 {symbol}: detect_signal() returned: {signal is not None} (signal object: {'YES' if signal else 'None'})", flush=True)
+                print(f"   [CHECK] {symbol}: detect_signal() returned: {signal is not None} (signal object: {'YES' if signal else 'None'})", flush=True)
             if signal:
                 signal['strategy_type'] = 'mean_reversion'
                 if self.debug:
-                    print(f"   ✅ {symbol}: Mean Reversion signal found (Score: {signal.get('confluence_score', 0)})", flush=True)
+                    print(f"   [OK] {symbol}: Mean Reversion signal found (Score: {signal.get('confluence_score', 0)})", flush=True)
             else:
                 if self.debug:
-                    print(f"   ⚪ {symbol}: detect_signal() returned None (either score < {MIN_CONFLUENCE_SCORE} or rejected by filters)", flush=True)
+                    print(f"   [SKIP] {symbol}: detect_signal() returned None (either score < {MIN_CONFLUENCE_SCORE} or rejected by filters)", flush=True)
         else:
             if self.debug:
-                print(f"   ⏸️  {symbol}: Mean reversion trading not allowed at this time", flush=True)
+                print(f"   [PAUSE]  {symbol}: Mean reversion trading not allowed at this time", flush=True)
 
         # Try breakout signal (if mean reversion found nothing and breakout is allowed)
         if signal is None and can_trade_bo and self.breakout_strategy:
@@ -1251,14 +1251,14 @@ class ConfluenceStrategy:
                     'breakout_details': breakout_signal  # Store full breakout details
                 }
                 if self.debug:
-                    print(f"   ✅ {symbol}: Breakout signal found (Score: {signal.get('confluence_score', 0)})", flush=True)
+                    print(f"   [OK] {symbol}: Breakout signal found (Score: {signal.get('confluence_score', 0)})", flush=True)
             else:
                 if self.debug:
-                    print(f"   ⚪ {symbol}: No breakout signal detected", flush=True)
+                    print(f"   [SKIP] {symbol}: No breakout signal detected", flush=True)
 
         if signal is None:
             if self.debug:
-                print(f"   ❌ {symbol}: No valid signals (need confluence >= {MIN_CONFLUENCE_SCORE})", flush=True)
+                print(f"   [FAIL] {symbol}: No valid signals (need confluence >= {MIN_CONFLUENCE_SCORE})", flush=True)
             return
 
         # Signal detected!
@@ -1549,7 +1549,7 @@ class ConfluenceStrategy:
         final_pnl = self.recovery_manager.calculate_net_profit(original_ticket, all_positions)
 
         print(f"\n{'='*70}")
-        print(f"📦 CLOSING RECOVERY STACK #{original_ticket}")
+        print(f"[STACK] CLOSING RECOVERY STACK #{original_ticket}")
         print(f"{'='*70}")
         print(f"   Reason: {reason}")
         print(f"   Final P&L: ${final_pnl:.2f}" if final_pnl is not None else "   Final P&L: Unknown")
@@ -1568,7 +1568,7 @@ class ConfluenceStrategy:
         # Untrack the original position
         self.recovery_manager.untrack_position(original_ticket)
 
-        print(f"📦 Stack closed: {closed_count}/{len(stack_tickets)} positions")
+        print(f"[STACK] Stack closed: {closed_count}/{len(stack_tickets)} positions")
         print(f"{'='*70}\n")
 
     def _execute_recovery_action(self, action: Dict):
@@ -1728,7 +1728,7 @@ class ConfluenceStrategy:
                                 # Force save state to disk
                                 if stored:
                                     self.recovery_manager._save_state()
-                                    print(f"   ✓ State saved - prevents duplicate hedge DCA triggers")
+                                    print(f"   [OK] State saved - prevents duplicate hedge DCA triggers")
 
                                     # ML LOGGING: Log hedge DCA event
                                     if self.ml_logger:
@@ -1813,7 +1813,7 @@ class ConfluenceStrategy:
         symbol = action['symbol']
 
         print(f"\n{'='*70}")
-        print(f"📉 PARTIAL HEDGE CLOSE #{hedge_ticket}")
+        print(f"[PARTIAL] PARTIAL HEDGE CLOSE #{hedge_ticket}")
         print(f"{'='*70}")
         print(f"   Reason: {reason}")
         print(f"   Close: {close_percent*100:.0f}%")
@@ -1989,7 +1989,7 @@ class ConfluenceStrategy:
         """
         print()
         print("=" * 60)
-        print("🔄 RELOADING CONFIGURATION")
+        print("[SYNC] RELOADING CONFIGURATION")
         print("=" * 60)
         success = reload_config()
         if success:

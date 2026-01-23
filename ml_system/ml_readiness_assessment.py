@@ -222,10 +222,10 @@ class MLReadinessAssessment:
         if assessment['recommendation'] == 'PARTIAL':
             actions.append("")
             actions.append("WHAT YOU CAN DO NOW:")
-            actions.append("  ✓ Use ML-recommended strategies (ADX stops, spread hour blocking)")
-            actions.append("  ✓ Monitor ML insights from existing data")
-            actions.append("  ✓ Use ML for pattern detection and alerts")
-            actions.append("  ✗ Full autonomous decision-making (need more data)")
+            actions.append("  [OK] Use ML-recommended strategies (ADX stops, spread hour blocking)")
+            actions.append("  [OK] Monitor ML insights from existing data")
+            actions.append("  [OK] Use ML for pattern detection and alerts")
+            actions.append("  [X] Full autonomous decision-making (need more data)")
 
         return actions
 
@@ -256,7 +256,7 @@ class MLReadinessAssessment:
         print("READINESS CRITERIA:")
         print("-" * 100)
         for name, check in assessment['checks'].items():
-            status = "✓ PASS" if check['pass'] else "✗ FAIL"
+            status = "[OK] PASS" if check['pass'] else "[X] FAIL"
             print(f"  {status:8} {name:25} {check['message']}")
         print()
 

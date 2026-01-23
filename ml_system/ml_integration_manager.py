@@ -55,7 +55,7 @@ class MLIntegrationManager:
 
         # Enhanced logger
         self.enhanced_logger = EnhancedTradeLogger()
-        print("[ML] ✓ Enhanced trade logger active")
+        print("[ML] [OK] Enhanced trade logger active")
 
         # Adaptive confluence (requires data)
         self.enable_adaptive = enable_adaptive_weighting
@@ -63,12 +63,12 @@ class MLIntegrationManager:
             try:
                 self.confluence_analyzer = AdaptiveConfluenceWeighting()
                 if self.confluence_analyzer.trade_log and len(self.confluence_analyzer.trade_log) >= 10:
-                    print(f"[ML] ✓ Adaptive confluence active ({len(self.confluence_analyzer.trade_log)} trades)")
+                    print(f"[ML] [OK] Adaptive confluence active ({len(self.confluence_analyzer.trade_log)} trades)")
                 else:
-                    print(f"[ML] ⚠ Adaptive confluence limited (only {len(self.confluence_analyzer.trade_log)} trades, need 50+)")
+                    print(f"[ML] [WARN] Adaptive confluence limited (only {len(self.confluence_analyzer.trade_log)} trades, need 50+)")
                     self.enable_adaptive = False
             except Exception as e:
-                print(f"[ML] ⚠ Adaptive confluence disabled: {e}")
+                print(f"[ML] [WARN] Adaptive confluence disabled: {e}")
                 self.enable_adaptive = False
 
         # Stats
@@ -76,7 +76,7 @@ class MLIntegrationManager:
         self.signals_logged = 0
         self.recovery_decisions_logged = 0
 
-        print("[ML INTEGRATION] ✓ Ready (all encoding UTF-8)")
+        print("[ML INTEGRATION] [OK] Ready (all encoding UTF-8)")
 
     # ============================================================================
     # TRADE LOGGING
@@ -384,12 +384,12 @@ if __name__ == '__main__':
         'hour': 12
     }
     ml_manager.log_trade_entry(trade)
-    print("✓ Trade logged")
+    print("[OK] Trade logged")
 
     # Example: Score a setup
     factors = ['vwap_band_2', 'poc', 'swing_low', 'daily_hvn']
     quality = ml_manager.score_setup_quality(factors)
-    print(f"\n✓ Setup scored: {quality['quality_tier']} ({quality['score']:.1f}/100)")
+    print(f"\n[OK] Setup scored: {quality['quality_tier']} ({quality['score']:.1f}/100)")
     print(f"  Win probability: {quality['win_probability']:.1f}%")
     print(f"  Expected profit: ${quality['expected_profit']:.2f}")
     print(f"  Recommendation: {quality['recommendation']}")
@@ -404,7 +404,7 @@ if __name__ == '__main__':
         'block_reason': 'SPREAD_HOUR'
     }
     ml_manager.log_recovery_decision(recovery)
-    print("\n✓ Recovery decision logged")
+    print("\n[OK] Recovery decision logged")
 
     # Status
     ml_manager.print_status()

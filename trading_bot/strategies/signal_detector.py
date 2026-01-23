@@ -131,7 +131,7 @@ class SignalDetector:
         """
         if len(current_data) < 200:
             if self.debug:
-                print(f"   ⚠️  {symbol}: Insufficient data ({len(current_data)} bars, need 200)", flush=True)
+                print(f"   [WARN]  {symbol}: Insufficient data ({len(current_data)} bars, need 200)", flush=True)
             return None
 
         # Get current price
@@ -237,7 +237,7 @@ class SignalDetector:
             print(f"   🎲 {symbol}: Calculated confluence score: {signal['confluence_score']}/{MIN_CONFLUENCE_SCORE}", flush=True)
 
             if signal['should_trade']:
-                print(f"\n   [{timestamp}] 🎯 SIGNAL DETECTED - {symbol} {signal['direction'].upper()} @ {price:.5f}")
+                print(f"\n   [{timestamp}] [SIGNAL] SIGNAL DETECTED - {symbol} {signal['direction'].upper()} @ {price:.5f}")
                 print(f"      Confluence Score: {signal['confluence_score']} (min: {MIN_CONFLUENCE_SCORE})")
                 print(f"      Factors ({len(signal['factors'])}): {', '.join(signal['factors'])}")
             elif signal['confluence_score'] > 0:
@@ -329,7 +329,7 @@ class SignalDetector:
             if m15_trend_blocks_entry:
                 signal['should_trade'] = False
                 signal['reject_reason'] = m15_trend_reason
-                print(f"⚠️  [ENTRY BLOCKED] {symbol} - {m15_trend_reason}")
+                print(f"[WARN]  [ENTRY BLOCKED] {symbol} - {m15_trend_reason}")
 
                 # LOG TO ML: Track M15 entry blocks for fine-tuning
                 if self.ml_logger:
@@ -360,7 +360,7 @@ class SignalDetector:
 
         # 7. Add detailed signal metadata for debugging
         if signal['should_trade']:
-            print(f"✅ [SIGNAL PASSED ALL FILTERS] {symbol} {signal['direction']} @ {price:.5f}")
+            print(f"[OK] [SIGNAL PASSED ALL FILTERS] {symbol} {signal['direction']} @ {price:.5f}")
             print(f"   Proceeding to trade execution")
 
             signal['vwap_value'] = vwap_signals.get('vwap', 0)

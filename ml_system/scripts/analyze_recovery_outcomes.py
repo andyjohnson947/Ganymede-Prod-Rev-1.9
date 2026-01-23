@@ -19,7 +19,8 @@ import pandas as pd
 
 def load_trades() -> List[Dict]:
     """Load trades from continuous trade log"""
-    log_file = Path("ml_system/outputs/continuous_trade_log.jsonl")
+    # Use absolute path based on this file's location
+    log_file = Path(__file__).parent.parent / "outputs" / "continuous_trade_log.jsonl"
 
     if not log_file.exists():
         print("❌ No trade log found at ml_system/outputs/continuous_trade_log.jsonl")
