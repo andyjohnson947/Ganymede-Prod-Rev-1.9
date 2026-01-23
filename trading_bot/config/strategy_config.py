@@ -150,7 +150,7 @@ MAX_GRID_LEVELS = 2     # Matches current instrument settings
 HEDGE_ENABLED = True  # Re-enabled with orphan cascade protection (fc39955)
 HEDGE_RATIO = 1.5  # 1.5x hedge ratio (conservative)
 MAX_HEDGES_PER_POSITION = 1  # Strict limit: ONE hedge per position
-MAX_HEDGE_VOLUME = 0.20  # Safety cap: max 0.20 lots per hedge
+MAX_HEDGE_VOLUME = 0.40  # Safety cap: max 0.20 lots per hedge
 
 # FALLBACK DEFAULT (only used if instrument not in instruments_config.py)
 HEDGE_TRIGGER_PIPS = 50  # Matches USDJPY current setting
@@ -170,11 +170,11 @@ STACK_DRAWDOWN_MULTIPLIER = 15.0  # DEPRECATED (now uses DCA_HEDGE_MAX_LOSS / DC
 #                All instruments: max 4 DCA levels (ML-recommended increase)
 
 DCA_ENABLED = True  # System-wide enable/disable
-DCA_MULTIPLIER = 1.2  # REDUCED: Changed from 2.0 to 1.2 after $500 loss (prevents volume cascade)
+DCA_MULTIPLIER = 2.4  # REDUCED: Changed from 2.0 to 1.2 after $500 loss (prevents volume cascade)
 
 # FALLBACK DEFAULTS (only used if instrument not in instruments_config.py)
 DCA_TRIGGER_PIPS = 35  # Matches USDJPY current setting
-DCA_MAX_LEVELS = 2     # REDUCED: Changed from 4 to 2 after $500 loss (limits cascade depth)
+DCA_MAX_LEVELS = 12     # REDUCED: Changed from 4 to 2 after $500 loss (limits cascade depth)
 
 # =============================================================================
 # PER-STACK STOP LOSS MANAGEMENT
@@ -188,12 +188,12 @@ ENABLE_STACK_STOPS = True
 # Maximum loss for DCA-only stacks (no hedge deployed)
 # TIGHTENED: Reduced from -$25 to -$20 after $500 loss analysis
 # Prevents excessive drawdown during trending markets
-DCA_ONLY_MAX_LOSS = -20.0
+DCA_ONLY_MAX_LOSS = -75.0
 
 # Maximum loss for DCA+Hedge stacks (hedge deployed)
 # TIGHTENED: Reduced from -$50 to -$30 after $500 loss analysis
 # Exits faster when trend protection filters block recovery additions
-DCA_HEDGE_MAX_LOSS = -30.0
+DCA_HEDGE_MAX_LOSS = -125.0
 
 # =============================================================================
 # CASCADE STOP PROTECTION (TREND DETECTION VIA STOP-OUTS)
@@ -270,7 +270,7 @@ USE_FIXED_LOT_SIZE = True
 MAX_TOTAL_LOTS = 15.0  # AGGRESSIVE: Increased from 5.04 to accommodate larger recovery stacks
 
 # Maximum drawdown before stopping
-MAX_DRAWDOWN_PERCENT = 25.0  # Updated from 10.0 to 25.0 per user request
+MAX_DRAWDOWN_PERCENT = 50.0  # Updated from 10.0 to 25.0 per user request
 
 # Stop loss (if used)
 STOP_LOSS_PIPS = None  # EA appears to not use hard stops
@@ -313,7 +313,7 @@ BREAKOUT_ENABLED = False
 # Enable time filtering (False = trade all hours for enabled strategies)
 # If False, enabled strategies will trade 24/7 regardless of configured windows
 # TESTING: Disabled to rely solely on ADX & candle lookback filters
-ENABLE_TIME_FILTERS = False
+ENABLE_TIME_FILTERS = True
 
 # ============================================================================
 
