@@ -199,7 +199,7 @@ def main():
     print("     Timezone-Aware | Instrument-Specific Trading Windows | ML System")
     print("=" * 80)
     print()
-    print("🔄 Cache Status: CLEARED (Fresh imports enabled)")
+    print("[OK] Cache Status: CLEARED (Fresh imports enabled)")
     print()
     print("Strategy Parameters:")
     print("  * Win Rate: 64.3%")

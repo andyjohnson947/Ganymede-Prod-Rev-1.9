@@ -69,7 +69,7 @@ def round_volume_to_step(volume: float, step: float = 0.01, min_lot: float = 0.0
 
 class StopOutTracker:
     """
-    Track stop-out events to detect cascade failures (range→trend transitions)
+    Track stop-out events to detect cascade failures (range->trend transitions)
 
     When multiple stops trigger in short time window, likely indicates
     market regime change from ranging to trending. Allows closing all
@@ -195,7 +195,7 @@ class RecoveryManager:
         # Thread locks for atomic hedge operations (prevents race conditions)
         self.hedge_locks = {}  # Dict[int, threading.Lock] - one lock per position
 
-        # Cascade stop protection - tracks stop-out events to detect range→trend transitions
+        # Cascade stop protection - tracks stop-out events to detect range->trend transitions
         self.stop_out_tracker = StopOutTracker() if ENABLE_CASCADE_PROTECTION else None
 
         # ML logger for tracking M15 trend blocks
@@ -542,7 +542,7 @@ class RecoveryManager:
         """
         if not silent:
             print("\n" + "="*60)
-            print("🔄 RECOVERY STACK RECONSTRUCTION")
+            print("[SYNC] RECOVERY STACK RECONSTRUCTION")
             print("="*60)
 
         # Track reconstruction statistics
@@ -1102,7 +1102,7 @@ class RecoveryManager:
             state_path = Path(state_file)
 
             if not state_path.exists():
-                print(f"ℹ️  No saved state found at {state_file}")
+                print(f"[INFO]  No saved state found at {state_file}")
                 return False
 
             # Load JSON with Windows-compatible encoding and error handling
@@ -1130,7 +1130,7 @@ class RecoveryManager:
             age = datetime.now() - state_time
             age_hours = age.total_seconds() / 3600
 
-            print(f"\n📂 Loading recovery state from {state['timestamp']}")
+            print(f"\n[LOAD] Loading recovery state from {state['timestamp']}")
             print(f"   State age: {age_hours:.1f} hours")
 
             if age_hours > 24:
@@ -1265,13 +1265,13 @@ class RecoveryManager:
             # Remove from active tracking
             del self.tracked_positions[ticket]
 
-            print(f"   📦 Archived closed: {ticket} ({pos['symbol']} {pos['type']}){orphan_str}")
+            print(f"   [STACK] Archived closed: {ticket} ({pos['symbol']} {pos['type']}){orphan_str}")
 
         # Prune archive to last 100 positions (keep state file manageable)
         if len(self.archived_positions) > 100:
             removed_count = len(self.archived_positions) - 100
             self.archived_positions = self.archived_positions[-100:]
-            print(f"   🧹 Pruned {removed_count} old archived positions (keeping last 100)")
+            print(f"   [CLEAN] Pruned {removed_count} old archived positions (keeping last 100)")
 
         # Add new MT5 positions to tracking
         for pos in mt5_positions:
@@ -1293,7 +1293,7 @@ class RecoveryManager:
                     'last_hedge_time': None,
                     'last_grid_time': None,
                 }
-                print(f"   ➕ Added new: {pos['ticket']} ({pos['symbol']} {pos['type']} @ {pos['price_open']})")
+                print(f"   [+] Added new: {pos['ticket']} ({pos['symbol']} {pos['type']} @ {pos['price_open']})")
 
         # Clean up orphaned positions - convert to standalone
         orphaned = [
@@ -1302,7 +1302,7 @@ class RecoveryManager:
         ]
 
         if orphaned:
-            print(f"   ⚠️  Found {len(orphaned)} orphaned recovery positions")
+            print(f"   [WARN]  Found {len(orphaned)} orphaned recovery positions")
             for ticket, pos in orphaned:
                 # Convert orphans to standalone positions (parent likely closed)
                 pos['is_orphaned'] = False
@@ -1776,7 +1776,7 @@ class RecoveryManager:
                     if consecutive_against >= 3:
                         logger.warning(f"[HEDGE BLOCKED] Position {ticket} - {consecutive_against} consecutive M15 candles against position")
                         logger.warning(f"   Clear trend on M15 - better to exit than hedge")
-                        print(f"⚠️  [HEDGE BLOCKED] #{ticket} - M15 Trend Detected")
+                        print(f"[WARN]  [HEDGE BLOCKED] #{ticket} - M15 Trend Detected")
                         print(f"   {consecutive_against} consecutive M15 candles moving against us")
                         print(f"   Position: -{pips_underwater:.1f} pips underwater")
                         print(f"   Action: NOT adding hedge - exit recommended instead")
@@ -1790,7 +1790,7 @@ class RecoveryManager:
 
                         if avg_candle_size > 1.5 * m15_atr:
                             logger.warning(f"[HEDGE BLOCKED] Position {ticket} - Large M15 candles, strong momentum")
-                            print(f"⚠️  [HEDGE BLOCKED] #{ticket} - Strong M15 Momentum")
+                            print(f"[WARN]  [HEDGE BLOCKED] #{ticket} - Strong M15 Momentum")
                             print(f"   Large candles (1.5x ATR) - trend too strong for hedge")
                             return None
 
@@ -1802,7 +1802,7 @@ class RecoveryManager:
                     if current_adx >= 30:
                         logger.warning(f"[HEDGE BLOCKED] Position {ticket} at -{pips_underwater:.1f} pips but H1 ADX={current_adx:.1f} indicates TRENDING market")
                         logger.warning(f"   NOT adding hedge (trend protection active - exit recommended)")
-                        print(f"⚠️  [HEDGE BLOCKED] #{ticket} - H1 ADX Trend Confirmed")
+                        print(f"[WARN]  [HEDGE BLOCKED] #{ticket} - H1 ADX Trend Confirmed")
                         print(f"   ADX={current_adx:.1f} (trending market)")
                         print(f"   Position: -{pips_underwater:.1f} pips underwater")
                         print(f"   Action: NOT adding hedge - consider exit instead")
@@ -2058,7 +2058,7 @@ class RecoveryManager:
             if consecutive_against >= 3:
                 logger.warning(f"[DCA BLOCKED] Position {ticket} - {consecutive_against} consecutive M15 candles against position")
                 logger.warning(f"   Clear trend detected on M15 timeframe - NOT adding DCA")
-                print(f"⚠️  [DCA BLOCKED] #{ticket} - M15 Trend Detected")
+                print(f"[WARN]  [DCA BLOCKED] #{ticket} - M15 Trend Detected")
                 print(f"   {consecutive_against} consecutive M15 candles moving against us")
                 print(f"   Position: -{pips_moved:.1f} pips underwater")
                 print(f"   Action: NOT adding DCA to avoid fighting clear trend")
@@ -2091,7 +2091,7 @@ class RecoveryManager:
                 if avg_candle_size > 1.5 * m15_atr:
                     logger.warning(f"[DCA BLOCKED] Position {ticket} - Large M15 candles indicate strong momentum")
                     logger.warning(f"   Avg candle: {avg_candle_size*10000:.1f} pips vs ATR: {m15_atr*10000:.1f} pips")
-                    print(f"⚠️  [DCA BLOCKED] #{ticket} - Strong M15 Momentum")
+                    print(f"[WARN]  [DCA BLOCKED] #{ticket} - Strong M15 Momentum")
                     print(f"   Large candles detected (1.5x ATR)")
                     print(f"   Action: NOT adding DCA during high volatility trend")
 
@@ -2122,7 +2122,7 @@ class RecoveryManager:
             if current_adx >= 30:
                 logger.warning(f"[DCA BLOCKED] Position {ticket} at -{pips_moved:.1f} pips but H1 ADX={current_adx:.1f} indicates TRENDING market")
                 logger.warning(f"   NOT adding DCA (trend protection active)")
-                print(f"⚠️  [DCA BLOCKED] #{ticket} - H1 ADX Trend Confirmed")
+                print(f"[WARN]  [DCA BLOCKED] #{ticket} - H1 ADX Trend Confirmed")
                 print(f"   ADX={current_adx:.1f} (trending market)")
                 print(f"   Position: -{pips_moved:.1f} pips underwater")
                 print(f"   Action: NOT adding DCA to avoid fighting strong trend")
@@ -2979,11 +2979,11 @@ class RecoveryManager:
 
         if position_type == 'buy':
             if current_price <= stop_price:
-                logger.info(f"[TRAIL] ✂️  #{ticket} BUY stop HIT: {current_price:.5f} <= {stop_price:.5f}")
+                logger.info(f"[TRAIL] [CUT]  #{ticket} BUY stop HIT: {current_price:.5f} <= {stop_price:.5f}")
                 return True
         else:  # sell
             if current_price >= stop_price:
-                logger.info(f"[TRAIL] ✂️  #{ticket} SELL stop HIT: {current_price:.5f} >= {stop_price:.5f}")
+                logger.info(f"[TRAIL] [CUT]  #{ticket} SELL stop HIT: {current_price:.5f} >= {stop_price:.5f}")
                 return True
 
         return False
@@ -3110,7 +3110,7 @@ class RecoveryManager:
         - Original: BUY at 1.0500 (drops to 1.0455 = -45 pips)
         - Hedge: SELL at 1.0455 (protects BUY)
         - Market reverses UP to 1.0485 (original recovering, hedge losing -30 pips)
-        - M15 check: 3+ bullish candles confirm uptrend → Hedge DCA allowed
+        - M15 check: 3+ bullish candles confirm uptrend -> Hedge DCA allowed
         - Hedge DCA: BUY at 1.0485 (SAME as original, OPPOSITE of hedge)
         - Result: If market continues up, hedge DCA profits and helps recovery!
 
@@ -3206,8 +3206,8 @@ class RecoveryManager:
                     recent_candles = m15_data.tail(3)
 
                     # Determine which direction we need for confirmation
-                    # Hedge SELL losing → Market going UP → Need bullish candles
-                    # Hedge BUY losing → Market going DOWN → Need bearish candles
+                    # Hedge SELL losing -> Market going UP -> Need bullish candles
+                    # Hedge BUY losing -> Market going DOWN -> Need bearish candles
                     if hedge_type == 'sell':
                         # Hedge SELL losing, need bullish M15 confirmation
                         # FIXED: Count backwards from most recent candle (like regular DCA/hedge blocking)
@@ -3274,7 +3274,7 @@ class RecoveryManager:
                 # Without this, the next iteration won't see the pending entry and triggers again
                 self._save_state()
 
-                print(f"🔄 [HEDGE DCA] Hedge #{hedge_ticket} needs DCA L{current_dca_count + 1}")
+                print(f"[SYNC] [HEDGE DCA] Hedge #{hedge_ticket} needs DCA L{current_dca_count + 1}")
                 print(f"   Hedge: {hedge_type.upper()} at {hedge_entry_price:.5f} (losing ${abs(hedge_profit):.2f})")
                 print(f"   Hedge underwater: -{pips_underwater:.1f} pips")
                 print(f"   DCA trigger: {required_pips} pips")
@@ -3306,9 +3306,9 @@ class RecoveryManager:
         Check if hedge should be partially closed based on original position recovery.
 
         Close Logic:
-        - Original recovers 50% (e.g., -40 pips → -20 pips) → Close 50% hedge
-        - Original at break-even → Close 75% hedge
-        - Original profitable → Close 100% hedge (+ all hedge DCAs)
+        - Original recovers 50% (e.g., -40 pips -> -20 pips) -> Close 50% hedge
+        - Original at break-even -> Close 75% hedge
+        - Original profitable -> Close 100% hedge (+ all hedge DCAs)
 
         Args:
             ticket: Original position ticket
@@ -3360,9 +3360,9 @@ class RecoveryManager:
             if trigger_pips > 0:
                 # Original was at -45 pips (trigger), now at original_pips
                 # Recovery % = (original_pips + 45) / 45
-                # Example: -45 → -20 = (-20 + 45) / 45 = 55% recovered
-                # Example: -45 → 0 = (0 + 45) / 45 = 100% recovered
-                # Example: -45 → +10 = (10 + 45) / 45 = 122% recovered
+                # Example: -45 -> -20 = (-20 + 45) / 45 = 55% recovered
+                # Example: -45 -> 0 = (0 + 45) / 45 = 100% recovered
+                # Example: -45 -> +10 = (10 + 45) / 45 = 122% recovered
                 recovery_pct = (original_pips + trigger_pips) / trigger_pips
             else:
                 continue  # Can't calculate recovery without trigger pips
@@ -3399,23 +3399,23 @@ class RecoveryManager:
             close_reason = None
 
             if recovery_pct >= 1.0 and not partial_100_done:
-                # Original profitable or break-even → Close 100% (everything)
+                # Original profitable or break-even -> Close 100% (everything)
                 close_percent = 1.0
                 close_reason = f"Original profitable (recovered {recovery_pct*100:.0f}%)"
                 hedge_info['partial_100_closed'] = True
             elif recovery_pct >= 0.75 and not partial_75_done:
-                # Original recovered 75% → Close 75%
+                # Original recovered 75% -> Close 75%
                 close_percent = 0.75
                 close_reason = f"Original recovered 75% (at {recovery_pct*100:.0f}%)"
                 hedge_info['partial_75_closed'] = True
             elif recovery_pct >= 0.50 and not partial_50_done:
-                # Original recovered 50% → Close 50%
+                # Original recovered 50% -> Close 50%
                 close_percent = 0.50
                 close_reason = f"Original recovered 50% (at {recovery_pct*100:.0f}%)"
                 hedge_info['partial_50_closed'] = True
 
             if close_percent:
-                print(f"📉 [HEDGE PARTIAL CLOSE] Hedge #{hedge_ticket} - {close_percent*100:.0f}% close")
+                print(f"[PARTIAL] [HEDGE PARTIAL CLOSE] Hedge #{hedge_ticket} - {close_percent*100:.0f}% close")
                 print(f"   Reason: {close_reason}")
                 print(f"   Original: {original_pips:+.1f} pips (was -{trigger_pips:.1f} at hedge open)")
 

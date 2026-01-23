@@ -69,20 +69,20 @@ class MLInsightsReporter:
         }
 
         if not self.enhanced_trade_log.exists():
-            insights['summary'].append("📊 No trade data yet - ML collection starts on first trade")
+            insights['summary'].append("No trade data yet - ML collection starts on first trade")
             return insights
 
         # Load recent trades
         trades = self._load_recent_trades(days)
 
         if len(trades) == 0:
-            insights['summary'].append(f"📊 No trades in last {days} days")
+            insights['summary'].append(f"No trades in last {days} days")
             return insights
 
         # Basic stats
         closed = [t for t in trades if t.get('exit_time')]
         if len(closed) == 0:
-            insights['summary'].append(f"📊 {len(trades)} trades opened, 0 closed (need closed trades for insights)")
+            insights['summary'].append(f"{len(trades)} trades opened, 0 closed (need closed trades for insights)")
             return insights
 
         # Win rate
@@ -90,7 +90,7 @@ class MLInsightsReporter:
         win_rate = len(wins) / len(closed) * 100
         avg_profit = sum(t.get('profit', 0) for t in closed) / len(closed)
 
-        insights['summary'].append(f"📊 Last {days} days: {len(closed)} trades closed")
+        insights['summary'].append(f"Last {days} days: {len(closed)} trades closed")
         insights['summary'].append(f"   Win Rate: {win_rate:.1f}% ({len(wins)}/{len(closed)})")
         insights['summary'].append(f"   Avg P&L: ${avg_profit:.2f}")
 
@@ -257,40 +257,40 @@ class MLInsightsReporter:
         if len(trades) < 50:
             recommendations.append(f"📈 Keep collecting data ({len(trades)}/50 trades for full analysis)")
         else:
-            recommendations.append(f"✅ Sufficient data for analysis ({len(trades)} trades)")
+            recommendations.append(f"[OK] Sufficient data for analysis ({len(trades)} trades)")
 
         # 2. Winning factors
         if factor_analysis and factor_analysis['winning_factors']:
             top_factor = factor_analysis['winning_factors'][0]
             recommendations.append(
-                f"🎯 Best factor: {top_factor['factor']} ({top_factor['win_rate']*100:.0f}% WR, n={top_factor['count']})"
+                f"[TOP] Best factor: {top_factor['factor']} ({top_factor['win_rate']*100:.0f}% WR, n={top_factor['count']})"
             )
 
         # 3. Losing factors
         if factor_analysis and factor_analysis['losing_factors']:
             worst_factor = factor_analysis['losing_factors'][0]
             recommendations.append(
-                f"⚠️  Weak factor: {worst_factor['factor']} ({worst_factor['win_rate']*100:.0f}% WR, n={worst_factor['count']})"
+                f"[WARN]  Weak factor: {worst_factor['factor']} ({worst_factor['win_rate']*100:.0f}% WR, n={worst_factor['count']})"
             )
 
         # 4. Recovery recommendations
         if recovery_stats['dca_used'] >= 3:
             if recovery_stats['dca_win_rate'] >= 70:
-                recommendations.append(f"✅ DCA working well ({recovery_stats['dca_win_rate']:.0f}% recovery rate)")
+                recommendations.append(f"[OK] DCA working well ({recovery_stats['dca_win_rate']:.0f}% recovery rate)")
             elif recovery_stats['dca_win_rate'] <= 40:
-                recommendations.append(f"⚠️  DCA struggling ({recovery_stats['dca_win_rate']:.0f}% recovery rate) - review triggers")
+                recommendations.append(f"[WARN]  DCA struggling ({recovery_stats['dca_win_rate']:.0f}% recovery rate) - review triggers")
 
         if recovery_stats['hedge_used'] >= 3:
             if recovery_stats['hedge_win_rate'] >= 70:
-                recommendations.append(f"✅ Hedge working well ({recovery_stats['hedge_win_rate']:.0f}% recovery rate)")
+                recommendations.append(f"[OK] Hedge working well ({recovery_stats['hedge_win_rate']:.0f}% recovery rate)")
             elif recovery_stats['hedge_win_rate'] <= 40:
-                recommendations.append(f"⚠️  Hedge struggling ({recovery_stats['hedge_win_rate']:.0f}% recovery rate) - review triggers")
+                recommendations.append(f"[WARN]  Hedge struggling ({recovery_stats['hedge_win_rate']:.0f}% recovery rate) - review triggers")
 
         # 5. Clean trades (no recovery needed)
         if recovery_stats['no_recovery'] >= 5:
             clean_rate = recovery_stats['clean_win_rate']
             recovery_rate = (recovery_stats['dca_used'] + recovery_stats['hedge_used']) / len(trades) * 100
-            recommendations.append(f"📊 Clean trades: {clean_rate:.0f}% WR, Recovery needed: {recovery_rate:.0f}%")
+            recommendations.append(f"Clean trades: {clean_rate:.0f}% WR, Recovery needed: {recovery_rate:.0f}%")
 
         return recommendations
 
@@ -306,7 +306,7 @@ class MLInsightsReporter:
         report.append("=" * 80)
 
         # Data status
-        report.append(f"📁 Data Collection:")
+        report.append("Data Collection:")
         report.append(f"   Trades Logged: {status['trades_logged']}")
         report.append(f"   Recovery Decisions: {status['recovery_decisions']}")
         if status['data_age_hours']:
@@ -324,22 +324,22 @@ class MLInsightsReporter:
 
         # Winning factors
         if insights['winning_factors']:
-            report.append("🎯 Top Performing Factors:")
+            report.append("[+] Top Performing Factors:")
             for factor in insights['winning_factors']:
-                report.append(f"   ✅ {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
+                report.append(f"   + {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
             report.append("")
 
         # Losing factors
         if insights['losing_factors']:
-            report.append("⚠️  Underperforming Factors:")
+            report.append("[!] Underperforming Factors:")
             for factor in insights['losing_factors']:
-                report.append(f"   ❌ {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
+                report.append(f"   - {factor['factor']}: {factor['win_rate']*100:.0f}% WR (n={factor['count']})")
             report.append("")
 
         # Recovery performance
         if insights['recovery_performance']:
             recovery = insights['recovery_performance']
-            report.append("🔄 Recovery Performance:")
+            report.append("[~] Recovery Performance:")
             if recovery['dca_used'] > 0:
                 report.append(f"   DCA: {recovery['dca_win_rate']:.0f}% recovery ({recovery['dca_wins']}/{recovery['dca_used']} trades)")
             if recovery['hedge_used'] > 0:
@@ -350,14 +350,14 @@ class MLInsightsReporter:
 
         # Best/worst hours
         if insights['best_hours']:
-            report.append("⏰ Best Trading Hours:")
+            report.append("[*] Best Trading Hours:")
             for hour_stat in insights['best_hours']:
                 report.append(f"   {hour_stat['hour']:02d}:00 - {hour_stat['win_rate']*100:.0f}% WR (${hour_stat['avg_profit']:.2f} avg, n={hour_stat['count']})")
             report.append("")
 
         # Recommendations
         if insights['recommendations']:
-            report.append("💡 ML Recommendations:")
+            report.append("[>] ML Recommendations:")
             for rec in insights['recommendations']:
                 report.append(f"   {rec}")
             report.append("")
