@@ -45,8 +45,8 @@ class MLPredictor:
         # Load model
         self._load_model(model_path)
 
-        # Prediction log
-        self.log_file = Path('ml_system/outputs/predictions.jsonl')
+        # Prediction log (use absolute path based on this file's location)
+        self.log_file = Path(__file__).parent / 'outputs' / 'predictions.jsonl'
 
     def _load_model(self, model_path: str = None):
         """Load ML model"""

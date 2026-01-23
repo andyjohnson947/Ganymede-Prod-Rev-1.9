@@ -16,7 +16,8 @@ class MLInsightsReporter:
     """Generate automatic ML insights from collected data"""
 
     def __init__(self):
-        self.outputs_dir = Path("ml_system/outputs")
+        # Use absolute path based on this file's location (not current working directory)
+        self.outputs_dir = Path(__file__).parent / "outputs"
         self.enhanced_trade_log = self.outputs_dir / "enhanced_trade_log.jsonl"
         self.recovery_log = self.outputs_dir / "recovery_decisions.jsonl"
         self.market_conditions_log = self.outputs_dir / "market_conditions.jsonl"
