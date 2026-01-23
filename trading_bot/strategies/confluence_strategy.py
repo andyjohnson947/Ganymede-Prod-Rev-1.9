@@ -1698,12 +1698,37 @@ class ConfluenceStrategy:
                             if hedge_info.get('ticket') == hedge_ticket:
                                 # Clear pending flag and store ticket
                                 hedge_dca_levels = hedge_info.get('dca_levels', [])
+
+                                # CRITICAL FIX: Always ensure ticket is stored
+                                stored = False
                                 if hedge_dca_levels and hedge_dca_levels[-1].get('pending'):
+                                    # Normal case: clear pending flag
                                     hedge_dca_levels[-1]['pending'] = False
                                     hedge_dca_levels[-1]['ticket'] = ticket
-                                    # CRITICAL: Save updated list back to hedge_info
-                                    hedge_info['dca_levels'] = hedge_dca_levels
-                                    print(f"   Hedge DCA {ticket} linked to hedge {hedge_ticket} (helps ORIGINAL recovery)")
+                                    stored = True
+                                    print(f"   Hedge DCA {ticket} linked to hedge {hedge_ticket} (cleared pending)")
+                                else:
+                                    # FAILSAFE: No pending entry found - add new entry
+                                    # This prevents the cascade bug where DCA triggers every minute
+                                    logger.warning(f"[HEDGE DCA] No pending entry for hedge {hedge_ticket} - adding manually")
+                                    hedge_dca_levels.append({
+                                        'level': len(hedge_dca_levels) + 1,
+                                        'volume': volume,
+                                        'trigger_pips': 0,  # Unknown at this point
+                                        'time': get_current_time(),
+                                        'pending': False,
+                                        'ticket': ticket
+                                    })
+                                    stored = True
+                                    print(f"   Hedge DCA {ticket} linked to hedge {hedge_ticket} (failsafe add)")
+
+                                # Save updated list
+                                hedge_info['dca_levels'] = hedge_dca_levels
+
+                                # Force save state to disk
+                                if stored:
+                                    self.recovery_manager._save_state()
+                                    print(f"   ✓ State saved - prevents duplicate hedge DCA triggers")
 
                                     # ML LOGGING: Log hedge DCA event
                                     if self.ml_logger:
