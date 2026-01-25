@@ -96,6 +96,9 @@ class TradeSetup:
     entry_imbalance: Optional[Imbalance]
     risk_reward: float
     setup_time: datetime
+    quality_score: Optional[int] = None
+    quality_grade: Optional[str] = None
+    size_multiplier: float = 1.0
 
     def to_dict(self) -> Dict:
         return {
@@ -106,7 +109,10 @@ class TradeSetup:
             'poi': self.poi.to_dict(),
             'sweep_level': self.sweep_level,
             'mss_level': self.mss_level,
-            'rr': self.risk_reward
+            'rr': self.risk_reward,
+            'quality_score': self.quality_score,
+            'quality_grade': self.quality_grade,
+            'size_multiplier': self.size_multiplier
         }
 
 
@@ -126,12 +132,20 @@ class PaulSMCStrategy:
         symbol: str = "EURUSD",
         pip_value: float = 0.0001,
         htf: str = "H1",
-        ltf: str = "M5"
+        ltf: str = "M5",
+        min_quality_score: int = 60,
+        use_quality_filter: bool = True
     ):
         self.symbol = symbol
         self.pip_value = pip_value
         self.htf = htf
         self.ltf = ltf
+        self.min_quality_score = min_quality_score
+        self.use_quality_filter = use_quality_filter
+
+        # Initialize quality filter
+        from strategies.setup_quality_filter import SetupQualityFilter
+        self.quality_filter = SetupQualityFilter(min_score=min_quality_score, pip_value=pip_value)
 
         # POIs storage
         self.htf_pois: List[POI] = []
@@ -537,7 +551,10 @@ class PaulSMCStrategy:
         sweep_level: float,
         poi: POI,
         mss_level: float,
-        imbalance: Optional[Imbalance] = None
+        imbalance: Optional[Imbalance] = None,
+        sweep_data: Optional[Dict] = None,
+        mss_data: Optional[Dict] = None,
+        context_data: Optional[Dict] = None
     ) -> Optional[TradeSetup]:
         """
         Generate complete trade setup with SL and TPs
@@ -607,6 +624,87 @@ class PaulSMCStrategy:
         if risk_reward < MIN_RISK_REWARD:
             return None
 
+        # Calculate SL in pips
+        sl_pips = sl_distance / self.pip_value
+
+        # =====================================================================
+        # QUALITY SCORING - Filter weak setups
+        # =====================================================================
+        quality_score = None
+        quality_grade = None
+        size_multiplier = 1.0
+
+        if self.use_quality_filter:
+            from strategies.setup_quality_filter import (
+                create_poi_data, create_sweep_data, create_mss_data,
+                create_entry_data, create_context_data
+            )
+
+            # Calculate POI age
+            poi_age_hours = (datetime.now() - poi.created_time).total_seconds() / 3600 if poi.created_time else 24
+
+            # Build scoring data
+            poi_score_data = create_poi_data(
+                poi_type=poi.poi_type,
+                strength=poi.strength,
+                age_hours=poi_age_hours,
+                htf_aligned=True,  # We're already using HTF POIs
+                near_session_level='session' in poi.poi_type
+            )
+
+            sweep_score_data = sweep_data or create_sweep_data(
+                sweep_pips=abs(sweep_level - poi.level) / self.pip_value,
+                closed_back=True,
+                wick_ratio=0.5,
+                high_volume=False
+            )
+
+            mss_score_data = mss_data or create_mss_data(
+                break_pips=abs(mss_level - entry_price) / self.pip_value if mss_level else 5,
+                impulsive_candle=False,
+                created_imbalance=imbalance is not None,
+                momentum_bars=1
+            )
+
+            entry_score_data = create_entry_data(
+                entry_type='imbalance' if imbalance else 'fib_50',
+                at_edge=imbalance is not None,
+                risk_reward=risk_reward,
+                sl_pips=sl_pips
+            )
+
+            ctx_data = context_data or create_context_data(
+                hour=datetime.now().hour,
+                day_of_week=datetime.now().weekday(),
+                near_news=False,
+                htf_trend_aligned=True,
+                volatility='normal'
+            )
+
+            # Score the setup
+            score_result = self.quality_filter.score_setup(
+                poi_data=poi_score_data,
+                sweep_data=sweep_score_data,
+                mss_data=mss_score_data,
+                entry_data=entry_score_data,
+                context_data=ctx_data
+            )
+
+            quality_score = score_result.total_score
+            quality_grade = score_result.grade.value
+
+            # Check if we should take the trade
+            should_take, size_multiplier = self.quality_filter.should_take_trade(score_result)
+
+            # Print score card
+            self.quality_filter.print_score_card(score_result)
+
+            if not should_take:
+                print(f"[FILTER] Setup REJECTED - Score: {quality_score}, Grade: {quality_grade}")
+                return None
+
+            print(f"[FILTER] Setup ACCEPTED - Score: {quality_score}, Grade: {quality_grade}, Size: {size_multiplier*100:.0f}%")
+
         setup = TradeSetup(
             direction=direction,
             entry_price=round(entry_price, 5),
@@ -617,7 +715,10 @@ class PaulSMCStrategy:
             mss_level=mss_level,
             entry_imbalance=imbalance,
             risk_reward=round(risk_reward, 1),
-            setup_time=datetime.now()
+            setup_time=datetime.now(),
+            quality_score=quality_score,
+            quality_grade=quality_grade,
+            size_multiplier=size_multiplier
         )
 
         self.setups_found += 1
