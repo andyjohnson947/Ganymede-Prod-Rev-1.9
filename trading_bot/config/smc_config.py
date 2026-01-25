@@ -1,224 +1,249 @@
 """
-SMC (Smart Money Concepts) Configuration
-Multi-Timeframe Order Block Analysis with Liquidity Sweeps
+SMC Configuration - Paul's Methodology
+Based on TradeForexwithPaul's approach
+
+Key Principles:
+1. HTF (1H-4H) for bias and Points of Interest (POI)
+2. LTF (5m-1m) for precise entries
+3. Wait for liquidity sweep INTO POI
+4. Market Structure Shift (MSS) on LTF confirms reversal
+5. Enter on pullback to LTF imbalance/OB
+6. Tight entries for high R:R (3R+ targets)
+
+NO indicators - pure price action.
 """
 
 # =============================================================================
-# SMC TIMEFRAME HIERARCHY
+# TIMEFRAME SETUP (Paul's Method)
 # =============================================================================
 
-# Higher timeframes for structure and order blocks
-SMC_HTF_TIMEFRAMES = ['H4', 'H1']
+# Higher Timeframe - Used for bias and marking POIs
+HTF_TIMEFRAME = 'H1'  # Can also use H4 for bigger picture
 
-# Lower timeframe for order blocks (MUST be included in confluence)
-SMC_LTF_TIMEFRAME = 'M15'
+# Lower Timeframe - Used for precise entries
+LTF_TIMEFRAME = 'M5'  # Can also use M1 for tighter entries
 
-# Entry timeframe for precision timing
-SMC_ENTRY_TIMEFRAME = 'M5'
+# Optional: Very high timeframe for overall bias
+BIAS_TIMEFRAME = 'H4'
 
 # =============================================================================
-# ORDER BLOCK DETECTION PARAMETERS
+# POINTS OF INTEREST (POI) - Where We Look for Trades
 # =============================================================================
 
-# Order Block Detection
-OB_LOOKBACK = 50  # Bars to look back for order blocks
-OB_MIN_BODY_RATIO = 0.5  # Minimum body/range ratio for valid OB candle
-OB_MITIGATION_TOUCH = True  # OB is mitigated when price touches (not just closes through)
-
-# Order Block Zone Extension (pips from OB high/low)
-OB_ZONE_EXTENSION_PIPS = {
-    'H4': 15,   # Wider zones on higher timeframes
-    'H1': 10,
-    'M15': 5,
-    'M5': 3
+# POI Types to track on HTF
+POI_TYPES = {
+    'previous_highs': True,       # Previous swing highs (liquidity above)
+    'previous_lows': True,        # Previous swing lows (liquidity below)
+    'session_highs': True,        # London/NY session highs
+    'session_lows': True,         # London/NY session lows
+    'equal_highs': True,          # Equal highs (obvious liquidity)
+    'equal_lows': True,           # Equal lows (obvious liquidity)
+    'imbalance_zones': True,      # FVG / Imbalance areas
+    'order_blocks': True,         # Supply/Demand zones
 }
 
-# Maximum Order Blocks to track per timeframe
-MAX_ORDER_BLOCKS = 10
+# Swing detection for highs/lows
+SWING_LOOKBACK_HTF = 7   # Bars to confirm swing high/low on HTF
+SWING_LOOKBACK_LTF = 5   # Bars to confirm swing high/low on LTF
 
-# Order Block Validity (bars before expiry)
-OB_VALIDITY_BARS = {
-    'H4': 30,   # ~5 days
-    'H1': 48,   # ~2 days
-    'M15': 96,  # ~1 day
-    'M5': 144   # ~12 hours
+# Equal highs/lows tolerance (how close = "equal")
+EQUAL_LEVEL_TOLERANCE = 0.0003  # 0.03% = ~3 pips on most pairs
+
+# =============================================================================
+# SESSION TIMES (GMT) - For Session High/Low POIs
+# =============================================================================
+
+SESSIONS = {
+    'london': {
+        'start': 8,   # 08:00 GMT
+        'end': 16,    # 16:00 GMT
+        'enabled': True
+    },
+    'new_york': {
+        'start': 13,  # 13:00 GMT
+        'end': 21,    # 21:00 GMT
+        'enabled': True
+    },
+    'asian': {
+        'start': 0,   # 00:00 GMT
+        'end': 8,     # 08:00 GMT
+        'enabled': True
+    }
 }
 
-# =============================================================================
-# BREAK OF STRUCTURE (BOS) / CHANGE OF CHARACTER (ChoCH) PARAMETERS
-# =============================================================================
+# Track previous day's high/low
+TRACK_PREVIOUS_DAY_HL = True
 
-# Swing detection lookback
-SWING_LOOKBACK = {
-    'H4': 5,    # 5 bars = 20 hours for swing detection
-    'H1': 7,    # 7 bars = 7 hours
-    'M15': 10,  # 10 bars = 2.5 hours
-    'M5': 12    # 12 bars = 1 hour
-}
-
-# BOS confirmation (price must close beyond swing)
-BOS_CLOSE_CONFIRMATION = True
-
-# ChoCH detection (first lower high in uptrend / first higher low in downtrend)
-CHOCH_ENABLED = True
+# Track previous week's high/low
+TRACK_PREVIOUS_WEEK_HL = True
 
 # =============================================================================
-# FAIR VALUE GAP (FVG) PARAMETERS
+# LIQUIDITY SWEEP DETECTION (Critical for Entry)
 # =============================================================================
 
-# FVG Detection
-FVG_LOOKBACK = 30  # Bars to look back for FVGs
-FVG_MIN_SIZE_PIPS = {
-    'H4': 20,   # Minimum gap size in pips
-    'H1': 10,
-    'M15': 5,
-    'M5': 3
-}
-
-# FVG Mitigation (considered filled when price returns)
-FVG_MITIGATION_PERCENT = 50  # FVG is mitigated when 50% filled
-
-# =============================================================================
-# LIQUIDITY PARAMETERS
-# =============================================================================
-
-# Liquidity Pool Detection
-LIQUIDITY_LOOKBACK = 50  # Bars for liquidity pool detection
-LIQUIDITY_CLUSTER_TOLERANCE = 0.001  # 0.1% - swings within this range form a pool
-LIQUIDITY_MIN_TOUCHES = 2  # Minimum touches to form a liquidity pool
-
-# Liquidity Sweep Detection
-SWEEP_CONFIRMATION_CANDLES = 1  # Number of candles to confirm sweep
-SWEEP_MIN_WICK_RATIO = 0.5  # Minimum wick/body ratio for sweep candle
-
-# Equal Highs/Lows Detection (built-up liquidity)
-EQUAL_HIGHS_TOLERANCE = 0.0005  # 0.05% tolerance for "equal" highs/lows
-EQUAL_HIGHS_MIN_COUNT = 2  # Minimum equal highs/lows to form a target
-
-# =============================================================================
-# CONFLUENCE REQUIREMENTS
-# =============================================================================
-
-# Minimum number of timeframe OBs that must align
-MIN_TF_CONFLUENCE = 2  # At least 2 timeframes must have aligned OBs
-
-# M15 OB is REQUIRED in confluence (per user request)
-M15_OB_REQUIRED = True
-
-# Confluence Zone Tolerance (price must be within this % of zone)
-CONFLUENCE_ZONE_TOLERANCE = 0.003  # 0.3%
-
-# Liquidity Sweep Required for Entry Signal
+# Liquidity must be taken BEFORE entry is valid
 LIQUIDITY_SWEEP_REQUIRED = True
 
+# What counts as a sweep:
+# - Price runs ABOVE highs (for shorts) or BELOW lows (for longs)
+# - This is the "trap" phase where retail stops get hit
+
+# Sweep confirmation
+SWEEP_MUST_CLOSE_BACK = True  # Price must close back inside after sweep
+SWEEP_MIN_PENETRATION_PIPS = 2  # Minimum pips beyond level to count as sweep
+
 # =============================================================================
-# M5 ENTRY TIMING PARAMETERS
+# MARKET STRUCTURE SHIFT (MSS) - Entry Confirmation
 # =============================================================================
 
-# Entry Timing (wait for reversal signs on M5)
-M5_ENTRY_LOOKBACK = 6  # Bars to analyze for reversal
+# After liquidity sweep, wait for MSS on LTF
+MSS_REQUIRED = True
 
-# ChoCH on M5 (Change of Character - reversal confirmation)
-M5_CHOCH_REQUIRED = True
+# MSS = Break of internal structure in OPPOSITE direction to sweep
+# If price swept highs (bearish setup): MSS = break of recent LTF low
+# If price swept lows (bullish setup): MSS = break of recent LTF high
 
-# Reversal Candle Patterns
-REVERSAL_PATTERNS = {
-    'pin_bar': True,      # Long wick rejection
-    'engulfing': True,    # Engulfing pattern
-    'inside_bar': False,  # Inside bar (optional - less reliable)
-    'doji': True,         # Indecision candle
+# MSS must be a clear break (close beyond, not just wick)
+MSS_CLOSE_CONFIRMATION = True
+
+# Number of LTF bars to look back for structure
+MSS_LOOKBACK_BARS = 20
+
+# =============================================================================
+# ENTRY RULES (Tight Entry for High R:R)
+# =============================================================================
+
+# Entry method after MSS confirmed:
+ENTRY_METHOD = 'pullback'  # Options: 'pullback', 'break', 'immediate'
+
+# Pullback entry - wait for price to retrace to:
+PULLBACK_TO = 'imbalance'  # Options: 'imbalance', 'ob', '50_fib', 'breaker'
+
+# If no pullback within X bars, skip the trade
+MAX_BARS_FOR_PULLBACK = 10
+
+# Entry must be TIGHT - this creates high R:R
+# Enter at edge of imbalance/OB, not middle
+
+# =============================================================================
+# IMBALANCE / FAIR VALUE GAP (FVG)
+# =============================================================================
+
+# Imbalance = gap between candle 1 high and candle 3 low (or vice versa)
+IMBALANCE_MIN_SIZE_PIPS = 3  # Minimum gap size to be valid
+
+# Use imbalance as entry zone on LTF
+USE_LTF_IMBALANCE_ENTRY = True
+
+# =============================================================================
+# STOP LOSS PLACEMENT (Paul's Tight SL for High R:R)
+# =============================================================================
+
+# SL goes JUST beyond the liquidity sweep high/low
+# This is intentionally VERY TIGHT - creates 10R-50R+ potential
+SL_BEYOND_SWEEP_PIPS = 2  # Pips beyond the sweep point (tight!)
+
+# If price RE-SWEEPS the level after entry = trade is INVALID
+# Exit immediately - idea is wrong
+RESWEEP_INVALIDATES_TRADE = True
+
+# =============================================================================
+# TAKE PROFIT / TARGETS (Opposite-Side Liquidity)
+# =============================================================================
+
+# Primary targets = OPPOSITE SIDE LIQUIDITY
+# - Previous highs/lows
+# - Session range highs/lows
+# - Major HTF structure points
+TARGET_OPPOSITE_LIQUIDITY = True
+
+# Partial profit levels (R multiples)
+PARTIAL_TP_LEVELS = {
+    'secure': 1.0,    # First partial at 1R to reduce risk
+    'profit': 3.0,    # Second partial at 3R
+    'runner': None,   # Let runner go to full liquidity target
 }
 
-# Pin Bar Detection
-PIN_BAR_WICK_RATIO = 2.0  # Wick must be 2x the body
-PIN_BAR_BODY_POSITION = 0.3  # Body must be in upper/lower 30% of range
-
-# Momentum Slowdown Detection
-MOMENTUM_SLOWDOWN_BARS = 3  # Check last N bars for decreasing range
-MOMENTUM_DECREASE_THRESHOLD = 0.7  # Range must decrease by 30%
-
-# =============================================================================
-# M15 ZONE GAUGE (Stay Out Filter)
-# =============================================================================
-
-# If price goes straight through M15 OB zone, stay out of market
-M15_ZONE_BREACH_BARS = 2  # If price closes beyond OB for 2 bars, zone is invalid
-M15_ZONE_BREACH_COOLDOWN = 4  # Wait 4 M15 bars (1 hour) after breach before trading
-
-# =============================================================================
-# TRADE MANAGEMENT
-# =============================================================================
-
-# Stop Loss Placement
-SL_BEYOND_OB_PIPS = {
-    'H4': 20,
-    'H1': 15,
-    'M15': 10,
-    'M5': 5
+# Partial close percentages
+PARTIAL_CLOSE = {
+    'secure': 30,     # Close 30% at 1R (secures some profit)
+    'profit': 40,     # Close 40% at 3R (bank profits)
+    'runner': 30,     # Let 30% run for big move (10R-50R potential)
 }
 
-# Take Profit Targets (multiples of SL distance)
-TP_RATIOS = [1.5, 2.0, 3.0]  # 1.5R, 2R, 3R
+# Move SL to breakeven after first partial
+MOVE_SL_TO_BE_AFTER_PARTIAL = True
 
-# Partial Close at Each TP Level
-PARTIAL_CLOSE_PERCENTS = [50, 30, 20]  # Close 50% at TP1, 30% at TP2, 20% at TP3
-
-# =============================================================================
-# CONFLUENCE SCORING WEIGHTS
-# =============================================================================
-
-SMC_CONFLUENCE_WEIGHTS = {
-    # Order Block Weights (by timeframe)
-    'h4_ob': 4,       # H4 Order Block (highest weight)
-    'h1_ob': 3,       # H1 Order Block
-    'm15_ob': 2,      # M15 Order Block (required)
-
-    # BOS/ChoCH Weights
-    'h4_bos': 3,      # H4 Break of Structure
-    'h1_bos': 2,      # H1 Break of Structure
-    'm15_bos': 2,     # M15 Break of Structure
-    'choch': 3,       # Change of Character (reversal)
-
-    # FVG Weights
-    'h4_fvg': 2,      # H4 Fair Value Gap
-    'h1_fvg': 2,      # H1 Fair Value Gap
-    'm15_fvg': 1,     # M15 Fair Value Gap
-
-    # Liquidity Weights
-    'liquidity_sweep': 4,       # Liquidity sweep occurred
-    'equal_highs_lows': 2,      # Equal highs/lows (built-up liquidity)
-    'swing_level': 1,           # At swing high/low
-
-    # M5 Entry Weights
-    'm5_choch': 3,              # ChoCH on M5
-    'm5_reversal_candle': 2,    # Reversal pattern on M5
-    'm5_momentum_slowdown': 1,  # Momentum slowing on M5
-}
-
-# Minimum confluence score for valid entry
-MIN_SMC_CONFLUENCE_SCORE = 8
-
-# Optimal confluence score (high probability setups)
-OPTIMAL_SMC_CONFLUENCE_SCORE = 12
+# Minimum R:R - don't take trades with less potential
+MIN_RISK_REWARD = 3.0  # Only take 3R+ setups
 
 # =============================================================================
-# VISUAL/DEBUG OUTPUT
+# RISK MANAGEMENT (Paul's Asymmetric R:R Approach)
 # =============================================================================
 
-# Debug output
-SMC_DEBUG = False
+# Fixed % risk per trade - VERY SMALL
+RISK_PER_TRADE_PERCENT = 0.5  # 0.5% risk per trade
 
-# Log all detected structures
-LOG_SMC_STRUCTURES = True
+# High win rate NOT required with this strategy
+# Strategy relies on ASYMMETRIC R:R (small losses, big wins)
+# Expected win rate: 30-40% is fine with 10R+ winners
+
+# Losses are EXPECTED and accepted quickly
+# If trade doesn't work immediately after entry, it's probably wrong
+
+# Maximum loss per day (as % of account)
+MAX_DAILY_LOSS_PERCENT = 2.0  # Stop trading after 2% daily loss
+
+# Maximum consecutive losses before pause
+MAX_CONSECUTIVE_LOSSES = 4
+
+# =============================================================================
+# TRADE RULES (No Chasing!)
+# =============================================================================
+
+# NEVER chase price - wait for it to come to your POI
+NO_CHASE_RULE = True
+
+# If price moves away from POI without triggering entry, wait for next setup
+# Don't FOMO in
+
+# Bias only valid AFTER liquidity taken
+BIAS_REQUIRES_LIQUIDITY = True
+
+# =============================================================================
+# FILTERING / AVOIDING BAD TRADES
+# =============================================================================
+
+# Don't trade if:
+AVOID_NEWS_EVENTS = True  # Around high-impact news
+AVOID_SESSION_CLOSE = True  # Last 30 mins of session
+AVOID_FRIDAY_AFTERNOON = True  # After 14:00 GMT Friday
+AVOID_SUNDAY_OPEN = True  # First 2 hours of week
+
+# Maximum trades per day
+MAX_TRADES_PER_DAY = 3
+
+# Maximum trades per session
+MAX_TRADES_PER_SESSION = 2
 
 # =============================================================================
 # DATA REQUIREMENTS
 # =============================================================================
 
-# Minimum bars required per timeframe
 MIN_BARS_REQUIRED = {
-    'H4': 100,
-    'H1': 200,
-    'M15': 500,
-    'M5': 1000
+    'H4': 100,   # ~16 days
+    'H1': 200,   # ~8 days
+    'M15': 400,  # ~4 days
+    'M5': 500,   # ~1.7 days
+    'M1': 1000,  # ~16 hours
 }
+
+# =============================================================================
+# DEBUG / LOGGING
+# =============================================================================
+
+SMC_DEBUG = False
+LOG_POI_DETECTION = True
+LOG_LIQUIDITY_SWEEPS = True
+LOG_MSS_DETECTION = True
+LOG_ENTRY_SIGNALS = True

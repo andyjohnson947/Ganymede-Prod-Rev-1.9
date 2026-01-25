@@ -1,19 +1,14 @@
 """
-SMC (Smart Money Concepts) Trade Bot
-Multi-Timeframe Order Block Analysis with Liquidity Sweeps
+SMC Trade Bot - Paul's Methodology
+Based on TradeForexwithPaul's approach
 
-This bot implements institutional trading concepts:
-- H4/H1/M15 Order Block confluence detection
-- Liquidity sweeps and swing hi/lo identification
-- M5 entry timing with ChoCH and reversal patterns
-- M15 OB zone as market gauge (stay out if breached)
-
-Entry Logic:
-1. Detect Order Blocks on H4, H1, M15 (as zones with top/bottom)
-2. Find confluence where 2+ timeframe OBs align (M15 required)
-3. Wait for liquidity sweep
-4. Enter on M5 when price retests zone with reversal confirmation
-5. If price goes straight through M15 OB, stay out
+Entry Flow:
+1. Mark HTF POIs (previous highs/lows, session levels)
+2. Wait for price to raid liquidity INTO the POI
+3. Look for MSS (Market Structure Shift) on LTF
+4. Enter on pullback to LTF imbalance
+5. SL just beyond sweep (tight!)
+6. TP at opposite-side liquidity
 
 Usage:
     python smc_trade_bot.py [--test] [--debug] [--symbols EURUSD GBPUSD]
@@ -32,25 +27,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
 
-# Import trading components
-from trading_bot.core.mt5_manager import MT5Manager
-from trading_bot.strategies.smc_analyzer import SMCMultiTimeframeAnalyzer
-from trading_bot.strategies.smc_entry_strategy import SMCEntryStrategy, EntrySignal
-from trading_bot.utils.risk_calculator import RiskCalculator
-from trading_bot.config.smc_config import (
-    SMC_HTF_TIMEFRAMES,
-    SMC_LTF_TIMEFRAME,
-    SMC_ENTRY_TIMEFRAME,
-    SMC_DEBUG,
-    MIN_BARS_REQUIRED
-)
-from trading_bot.config.strategy_config import (
-    SYMBOLS,
-    BASE_LOT_SIZE,
-    MAX_OPEN_POSITIONS,
-    MT5_MAGIC_NUMBER
-)
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -62,10 +38,13 @@ logger = logging.getLogger('SMCTradeBot')
 
 class SMCTradeBot:
     """
-    SMC (Smart Money Concepts) Trade Bot
+    SMC Trade Bot - Paul's Methodology
 
-    Implements multi-timeframe order block analysis with
-    liquidity sweeps and M5 entry timing.
+    Simple, high R:R trading based on:
+    - HTF POI identification
+    - Liquidity sweeps
+    - LTF Market Structure Shifts
+    - Tight entries on pullbacks
     """
 
     def __init__(
@@ -73,338 +52,301 @@ class SMCTradeBot:
         symbols: List[str] = None,
         test_mode: bool = False,
         debug: bool = False,
-        lot_size: float = BASE_LOT_SIZE
+        lot_size: float = 0.04,
+        htf: str = 'H1',
+        ltf: str = 'M5'
     ):
-        """
-        Initialize SMC Trade Bot
-
-        Args:
-            symbols: List of symbols to trade (default: from config)
-            test_mode: If True, bypass time filters and paper trade
-            debug: Enable verbose debug output
-            lot_size: Position size for trades
-        """
-        self.symbols = symbols or SYMBOLS
+        self.symbols = symbols or ['EURUSD', 'GBPUSD']
         self.test_mode = test_mode
-        self.debug = debug or SMC_DEBUG
+        self.debug = debug
         self.lot_size = lot_size
+        self.htf = htf
+        self.ltf = ltf
 
         # MT5 connection
-        self.mt5: Optional[MT5Manager] = None
+        self.mt5 = None
 
-        # Strategy components per symbol
-        self.strategies: Dict[str, SMCEntryStrategy] = {}
-
-        # Risk calculator
-        self.risk_calculator = RiskCalculator()
+        # Strategy instances per symbol
+        self.strategies: Dict = {}
 
         # Bot state
         self.running = False
         self.last_analysis_time: Dict[str, datetime] = {}
-        self.market_data_cache: Dict[str, Dict] = {}
+
+        # Analysis interval
+        self.analysis_interval = 60  # seconds
 
         # Statistics
         self.stats = {
             'start_time': None,
-            'analyses_performed': 0,
-            'signals_generated': 0,
-            'trades_opened': 0,
-            'trades_closed': 0,
-            'total_profit': 0.0
+            'setups_found': 0,
+            'trades_taken': 0,
+            'trades_won': 0,
+            'trades_lost': 0,
+            'total_rr': 0.0
         }
 
-        # Analysis interval (seconds)
-        self.analysis_interval = 60  # Run analysis every minute
+        # Risk management
+        from trading_bot.config.smc_config import (
+            RISK_PER_TRADE_PERCENT,
+            MAX_DAILY_LOSS_PERCENT,
+            MAX_TRADES_PER_DAY
+        )
+        self.risk_per_trade = RISK_PER_TRADE_PERCENT
+        self.max_daily_loss = MAX_DAILY_LOSS_PERCENT
+        self.max_trades_per_day = MAX_TRADES_PER_DAY
+        self.daily_trades = 0
+        self.daily_loss = 0.0
 
-        logger.info(f"SMC Trade Bot initialized for symbols: {', '.join(self.symbols)}")
+        logger.info(f"SMC Trade Bot (Paul's Method) initialized")
+        logger.info(f"Symbols: {', '.join(self.symbols)}")
+        logger.info(f"HTF: {htf}, LTF: {ltf}")
+        logger.info(f"Risk per trade: {self.risk_per_trade}%")
 
     def connect(self) -> bool:
         """Connect to MT5"""
-        logger.info("Connecting to MT5...")
-        self.mt5 = MT5Manager()
+        try:
+            from trading_bot.core.mt5_manager import MT5Manager
+            logger.info("Connecting to MT5...")
+            self.mt5 = MT5Manager()
 
-        if not self.mt5.connect():
-            logger.error("Failed to connect to MT5")
+            if not self.mt5.connect():
+                logger.error("Failed to connect to MT5")
+                return False
+
+            account_info = self.mt5.get_account_info()
+            if account_info:
+                logger.info(f"Connected - Balance: ${account_info['balance']:.2f}")
+                self.account_balance = account_info['balance']
+            return True
+
+        except Exception as e:
+            logger.error(f"MT5 connection error: {e}")
             return False
 
-        # Get account info
-        account_info = self.mt5.get_account_info()
-        if account_info:
-            logger.info(f"Connected to MT5 - Balance: ${account_info['balance']:.2f}")
-            self.risk_calculator.set_initial_balance(account_info['balance'])
-        else:
-            logger.warning("Connected but couldn't get account info")
-
-        return True
-
     def initialize_strategies(self):
-        """Initialize SMC strategy for each symbol"""
+        """Initialize strategy for each symbol"""
+        from trading_bot.strategies.paul_smc_strategy import PaulSMCStrategy
+
         for symbol in self.symbols:
             pip_value = 0.0001 if 'JPY' not in symbol else 0.01
-            self.strategies[symbol] = SMCEntryStrategy(
+            self.strategies[symbol] = PaulSMCStrategy(
                 symbol=symbol,
                 pip_value=pip_value,
-                lot_size=self.lot_size
+                htf=self.htf,
+                ltf=self.ltf
             )
-            logger.info(f"Initialized SMC strategy for {symbol}")
+            logger.info(f"Strategy initialized for {symbol}")
 
-    def fetch_market_data(self, symbol: str) -> Dict[str, any]:
-        """
-        Fetch market data for all required timeframes
+    def fetch_data(self, symbol: str) -> Optional[Dict]:
+        """Fetch HTF and LTF data"""
+        try:
+            from trading_bot.config.smc_config import MIN_BARS_REQUIRED
 
-        Returns:
-            Dict with H4, H1, M15, M5 DataFrames
-        """
-        data = {}
+            htf_bars = MIN_BARS_REQUIRED.get(self.htf, 200)
+            ltf_bars = MIN_BARS_REQUIRED.get(self.ltf, 500)
 
-        timeframes = {
-            'H4': ('H4', MIN_BARS_REQUIRED.get('H4', 100) + 50),
-            'H1': ('H1', MIN_BARS_REQUIRED.get('H1', 200) + 50),
-            'M15': ('M15', MIN_BARS_REQUIRED.get('M15', 500) + 50),
-            'M5': ('M5', MIN_BARS_REQUIRED.get('M5', 1000) + 50)
-        }
+            htf_data = self.mt5.get_data(symbol, self.htf, bars=htf_bars)
+            ltf_data = self.mt5.get_data(symbol, self.ltf, bars=ltf_bars)
 
-        for tf_name, (tf_code, bars) in timeframes.items():
-            df = self.mt5.get_data(symbol, tf_code, bars=bars)
-            if df is not None and len(df) > 0:
-                data[tf_name] = df
-                if self.debug:
-                    logger.debug(f"Fetched {len(df)} {tf_name} bars for {symbol}")
-            else:
-                logger.warning(f"Failed to fetch {tf_name} data for {symbol}")
+            if htf_data is None or ltf_data is None:
                 return None
 
-        return data
+            if len(htf_data) < 50 or len(ltf_data) < 100:
+                return None
 
-    def process_symbol(self, symbol: str) -> Optional[EntrySignal]:
-        """
-        Process a symbol for potential entry signals
+            return {
+                'htf': htf_data,
+                'ltf': ltf_data
+            }
 
-        Args:
-            symbol: Trading symbol
+        except Exception as e:
+            logger.error(f"Data fetch error for {symbol}: {e}")
+            return None
 
-        Returns:
-            EntrySignal if conditions met, None otherwise
-        """
+    def process_symbol(self, symbol: str) -> Optional[Dict]:
+        """Process a symbol for trade setups"""
         strategy = self.strategies.get(symbol)
         if not strategy:
             return None
 
-        # Fetch market data
-        data = self.fetch_market_data(symbol)
+        data = self.fetch_data(symbol)
         if not data:
             return None
 
-        # Get current price
-        current_price = data['M5'].iloc[-1]['close']
-
-        # Process tick through strategy
-        signal = strategy.process_tick(
-            h4_data=data['H4'],
-            h1_data=data['H1'],
-            m15_data=data['M15'],
-            m5_data=data['M5'],
-            current_price=current_price
+        # Run analysis
+        setup = strategy.analyze(
+            htf_data=data['htf'],
+            ltf_data=data['ltf']
         )
 
-        self.stats['analyses_performed'] += 1
-
-        if signal and signal.valid:
-            self.stats['signals_generated'] += 1
-            return signal
+        if setup:
+            self.stats['setups_found'] += 1
+            return {
+                'symbol': symbol,
+                'setup': setup,
+                'data': data
+            }
 
         return None
 
-    def execute_signal(self, signal: EntrySignal) -> bool:
-        """
-        Execute a trade based on entry signal
-
-        Args:
-            signal: EntrySignal object
-
-        Returns:
-            True if trade opened successfully
-        """
+    def execute_trade(self, symbol: str, setup) -> bool:
+        """Execute a trade based on setup"""
         if self.test_mode:
-            logger.info(f"[TEST MODE] Would execute: {signal.direction.upper()} "
-                       f"@ {signal.entry_price:.5f}, SL: {signal.stop_loss:.5f}")
+            logger.info(f"[TEST] Would execute: {symbol} {setup.direction.value.upper()}")
+            logger.info(f"[TEST]   Entry: {setup.entry_price:.5f}")
+            logger.info(f"[TEST]   SL: {setup.stop_loss:.5f}")
+            logger.info(f"[TEST]   TP1: {setup.take_profits[0]:.5f}")
+            logger.info(f"[TEST]   R:R: {setup.risk_reward}")
             return True
 
-        # Check position limits
-        positions = self.mt5.get_positions()
-        if len(positions) >= MAX_OPEN_POSITIONS:
-            logger.warning("Max positions reached, skipping signal")
+        # Check daily limits
+        if self.daily_trades >= self.max_trades_per_day:
+            logger.warning("Max daily trades reached")
             return False
 
-        # Open the trade
-        symbol = signal.confluence_zone.get('timeframe', 'EURUSD')  # Get from zone
-        if 'order_blocks' in signal.confluence_zone and signal.confluence_zone['order_blocks']:
-            symbol = signal.confluence_zone['order_blocks'][0].get('timeframe', symbol)
+        if self.daily_loss >= self.max_daily_loss:
+            logger.warning("Max daily loss reached")
+            return False
 
-        # Determine order type
-        order_type = 'buy' if signal.direction == 'buy' else 'sell'
+        # Calculate position size based on risk
+        account_info = self.mt5.get_account_info()
+        if not account_info:
+            return False
 
-        # Place the order
+        balance = account_info['balance']
+        risk_amount = balance * (self.risk_per_trade / 100)
+
+        # SL distance in pips
+        pip_value = 0.0001 if 'JPY' not in symbol else 0.01
+        sl_pips = abs(setup.entry_price - setup.stop_loss) / pip_value
+
+        # Calculate lot size (assuming $10/pip for 1 lot)
+        pip_value_per_lot = 10.0
+        lot_size = risk_amount / (sl_pips * pip_value_per_lot)
+        lot_size = round(max(0.01, min(lot_size, 1.0)), 2)
+
+        # Place order
+        order_type = 'buy' if setup.direction.value == 'long' else 'sell'
+
         result = self.mt5.open_position(
             symbol=symbol,
             order_type=order_type,
-            lot_size=self.lot_size,
-            sl=signal.stop_loss,
-            tp=signal.take_profits[0] if signal.take_profits else None,
-            magic=MT5_MAGIC_NUMBER,
-            comment=f"SMC_{signal.confluence_score:.0f}"
+            lot_size=lot_size,
+            sl=setup.stop_loss,
+            tp=setup.take_profits[0],
+            magic=987655,  # SMC bot magic number
+            comment=f"SMC_RR{setup.risk_reward:.0f}"
         )
 
         if result:
-            self.stats['trades_opened'] += 1
-            logger.info(f"Trade opened: {order_type.upper()} @ {signal.entry_price:.5f}")
-
-            # Notify strategy
-            self.strategies[symbol].on_trade_opened({
-                'symbol': symbol,
-                'type': order_type,
-                'price': signal.entry_price,
-                'sl': signal.stop_loss,
-                'tp': signal.take_profits[0] if signal.take_profits else None
-            })
-
+            self.stats['trades_taken'] += 1
+            self.daily_trades += 1
+            logger.info(f"Trade opened: {symbol} {order_type.upper()} {lot_size} lots")
+            logger.info(f"  Entry: {setup.entry_price:.5f}")
+            logger.info(f"  SL: {setup.stop_loss:.5f}")
+            logger.info(f"  TP: {setup.take_profits[0]:.5f}")
+            logger.info(f"  R:R: {setup.risk_reward}")
             return True
 
-        logger.error("Failed to open trade")
+        logger.error(f"Failed to open trade for {symbol}")
         return False
 
-    def print_analysis_summary(self, symbol: str, data: Dict):
-        """Print analysis summary for a symbol"""
-        strategy = self.strategies.get(symbol)
-        if not strategy:
-            return
+    def check_re_sweep(self, symbol: str, setup) -> bool:
+        """
+        Check if price re-swept the level (invalidates trade)
 
-        analyzer = strategy.analyzer
-        current_price = data['M5'].iloc[-1]['close']
+        If price goes back beyond the sweep level, exit immediately
+        """
+        from trading_bot.config.smc_config import RESWEEP_INVALIDATES_TRADE
 
-        print("\n" + "=" * 60)
-        print(f" SMC ANALYSIS: {symbol} @ {current_price:.5f}")
-        print("=" * 60)
+        if not RESWEEP_INVALIDATES_TRADE:
+            return False
 
-        summary = analyzer.get_analysis_summary(current_price)
+        # Get current price
+        data = self.fetch_data(symbol)
+        if not data:
+            return False
 
-        print(f"\n[TRENDS]")
-        print(f"  H4: {summary['summary']['h4_trend'].upper()}")
-        print(f"  H1: {summary['summary']['h1_trend'].upper()}")
-        print(f"  M15: {summary['summary']['m15_trend'].upper()}")
+        current = data['ltf'].iloc[-1]
 
-        print(f"\n[ORDER BLOCKS]")
-        h4_obs = summary['h4_analysis'].get('counts', {}).get('active_order_blocks', 0)
-        h1_obs = summary['h1_analysis'].get('counts', {}).get('active_order_blocks', 0)
-        m15_obs = summary['m15_analysis'].get('counts', {}).get('active_order_blocks', 0)
-        print(f"  H4: {h4_obs}, H1: {h1_obs}, M15: {m15_obs}")
+        # Check re-sweep
+        if setup.direction.value == 'long':
+            # For longs, re-sweep = price goes below sweep level again
+            if current['low'] < setup.sweep_level:
+                logger.warning(f"[{symbol}] RE-SWEEP detected - trade invalid!")
+                return True
+        else:
+            # For shorts, re-sweep = price goes above sweep level again
+            if current['high'] > setup.sweep_level:
+                logger.warning(f"[{symbol}] RE-SWEEP detected - trade invalid!")
+                return True
 
-        print(f"\n[CONFLUENCE ZONES]")
-        print(f"  Total: {summary['summary']['total_confluence_zones']}")
-        print(f"  Valid: {summary['summary']['valid_confluence_zones']}")
-        print(f"  Bullish: {summary['summary']['bullish_zones']}")
-        print(f"  Bearish: {summary['summary']['bearish_zones']}")
-
-        # Print zone details
-        for i, zone in enumerate(summary.get('valid_confluence_zones', [])[:3], 1):
-            print(f"\n  Zone {i}: {zone['direction'].upper()}")
-            print(f"    Range: {zone['bottom']:.5f} - {zone['top']:.5f}")
-            print(f"    TFs: {', '.join(zone['timeframes'])}")
-            print(f"    Score: {zone['confluence_score']:.1f}")
-
-        print(f"\n[LIQUIDITY]")
-        print(f"  Sweeps: {summary['summary']['liquidity_sweeps']}")
-
-        if summary.get('m15_cooldown_active'):
-            print(f"\n[!] M15 ZONE BREACH - COOLDOWN ACTIVE")
-
-        print("\n" + "=" * 60)
+        return False
 
     def run(self):
         """Main bot loop"""
-        logger.info("=" * 60)
-        logger.info(" SMC TRADE BOT STARTING")
-        logger.info("=" * 60)
+        print("\n" + "=" * 60)
+        print(" SMC TRADE BOT - PAUL'S METHODOLOGY")
+        print("=" * 60)
+        print(f"\nKey Rules:")
+        print(f"  - Wait for liquidity sweep INTO POI")
+        print(f"  - MSS on LTF confirms direction")
+        print(f"  - Enter on pullback (tight entry)")
+        print(f"  - SL beyond sweep, TP at opposite liquidity")
+        print(f"  - High R:R (3R minimum, 10R+ potential)")
+        print(f"\nSettings:")
+        print(f"  Symbols: {', '.join(self.symbols)}")
+        print(f"  HTF: {self.htf}, LTF: {self.ltf}")
+        print(f"  Risk: {self.risk_per_trade}% per trade")
+        print(f"  Max trades/day: {self.max_trades_per_day}")
+        print("=" * 60 + "\n")
 
-        if not self.connect():
-            logger.error("Failed to connect to MT5, exiting")
-            return
+        if not self.test_mode:
+            if not self.connect():
+                logger.error("Failed to connect to MT5")
+                return
 
         self.initialize_strategies()
 
         self.running = True
         self.stats['start_time'] = datetime.now()
 
-        logger.info(f"Bot running - Analyzing: {', '.join(self.symbols)}")
-        logger.info(f"Test Mode: {self.test_mode}")
-        logger.info(f"Debug Mode: {self.debug}")
-        logger.info("")
-
         try:
             while self.running:
                 for symbol in self.symbols:
                     try:
-                        # Check if it's time to analyze
-                        last_time = self.last_analysis_time.get(symbol)
+                        # Rate limit
+                        last = self.last_analysis_time.get(symbol)
                         now = datetime.now()
-
-                        if last_time and (now - last_time).total_seconds() < self.analysis_interval:
+                        if last and (now - last).total_seconds() < self.analysis_interval:
                             continue
 
                         self.last_analysis_time[symbol] = now
 
-                        # Fetch and analyze
-                        data = self.fetch_market_data(symbol)
-                        if not data:
-                            continue
+                        # Analyze
+                        result = self.process_symbol(symbol)
 
-                        # Store in cache
-                        self.market_data_cache[symbol] = data
+                        if result and result['setup']:
+                            setup = result['setup']
+                            quality = "EXCELLENT" if setup.risk_reward >= 5 else "GOOD" if setup.risk_reward >= 3 else "OK"
 
-                        # Run analysis
-                        current_price = data['M5'].iloc[-1]['close']
-                        strategy = self.strategies[symbol]
+                            print(f"\n{'='*50}")
+                            print(f"SETUP FOUND: {symbol}")
+                            print(f"{'='*50}")
+                            print(f"Direction: {setup.direction.value.upper()}")
+                            print(f"Quality: {quality} ({setup.risk_reward}R)")
+                            print(f"Entry: {setup.entry_price:.5f}")
+                            print(f"SL: {setup.stop_loss:.5f}")
+                            print(f"TPs: {[f'{tp:.5f}' for tp in setup.take_profits]}")
+                            print(f"POI: {setup.poi.poi_type} @ {setup.poi.level:.5f}")
+                            print(f"{'='*50}\n")
 
-                        # Full analysis
-                        analysis = strategy.analyzer.analyze_all_timeframes(
-                            h4_data=data['H4'],
-                            h1_data=data['H1'],
-                            m15_data=data['M15'],
-                            m5_data=data['M5']
-                        )
+                            # Execute if not test mode
+                            self.execute_trade(symbol, setup)
 
-                        # Print summary if debug
-                        if self.debug:
-                            self.print_analysis_summary(symbol, data)
-
-                        # Check for entry signal
-                        signal = strategy.process_tick(
-                            h4_data=data['H4'],
-                            h1_data=data['H1'],
-                            m15_data=data['M15'],
-                            m5_data=data['M5'],
-                            current_price=current_price
-                        )
-
-                        self.stats['analyses_performed'] += 1
-
-                        if signal and signal.valid:
-                            self.stats['signals_generated'] += 1
-                            quality = strategy.get_signal_quality(signal)
-
-                            logger.info(f"\n{'='*50}")
-                            logger.info(f"ENTRY SIGNAL: {symbol} {signal.direction.upper()}")
-                            logger.info(f"Quality: {quality}")
-                            logger.info(f"Entry: {signal.entry_price:.5f}")
-                            logger.info(f"SL: {signal.stop_loss:.5f}")
-                            logger.info(f"TP1: {signal.take_profits[0]:.5f}")
-                            logger.info(f"Score: {signal.confluence_score:.1f}")
-                            logger.info(f"Factors: {', '.join(signal.factors)}")
-                            logger.info(f"{'='*50}\n")
-
-                            # Execute if not in test mode
-                            if not self.test_mode:
-                                self.execute_signal(signal)
+                            # Reset strategy for next setup
+                            self.strategies[symbol].reset()
 
                     except Exception as e:
                         logger.error(f"Error processing {symbol}: {e}")
@@ -413,10 +355,9 @@ class SMCTradeBot:
                             traceback.print_exc()
 
                 # Print status periodically
-                if self.stats['analyses_performed'] % 10 == 0:
+                if self.stats['setups_found'] > 0 and self.stats['setups_found'] % 5 == 0:
                     self.print_status()
 
-                # Sleep between iterations
                 time.sleep(5)
 
         except KeyboardInterrupt:
@@ -429,62 +370,46 @@ class SMCTradeBot:
         """Print bot status"""
         runtime = datetime.now() - self.stats['start_time'] if self.stats['start_time'] else timedelta(0)
 
-        print(f"\n[STATUS] Runtime: {runtime} | "
-              f"Analyses: {self.stats['analyses_performed']} | "
-              f"Signals: {self.stats['signals_generated']} | "
-              f"Trades: {self.stats['trades_opened']}")
+        print(f"\n[STATUS] Runtime: {runtime}")
+        print(f"  Setups found: {self.stats['setups_found']}")
+        print(f"  Trades taken: {self.stats['trades_taken']}")
+        print(f"  Daily trades: {self.daily_trades}/{self.max_trades_per_day}")
 
         for symbol, strategy in self.strategies.items():
-            stats = strategy.get_statistics()
-            print(f"  {symbol}: State={stats['current_state']}, "
-                  f"Win Rate={stats['win_rate']:.1f}%")
+            status = strategy.get_status()
+            print(f"  {symbol}: {status['state']} | POIs: {status['htf_pois']}")
 
     def shutdown(self):
-        """Shutdown the bot"""
+        """Shutdown bot"""
         logger.info("Shutting down SMC Trade Bot...")
         self.running = False
 
-        # Print final statistics
-        self.print_final_stats()
+        print("\n" + "=" * 60)
+        print(" FINAL STATISTICS")
+        print("=" * 60)
+        print(f"Setups Found: {self.stats['setups_found']}")
+        print(f"Trades Taken: {self.stats['trades_taken']}")
+        print(f"Trades Won: {self.stats['trades_won']}")
+        print(f"Trades Lost: {self.stats['trades_lost']}")
 
-        # Disconnect MT5
+        if self.stats['trades_won'] + self.stats['trades_lost'] > 0:
+            wr = self.stats['trades_won'] / (self.stats['trades_won'] + self.stats['trades_lost']) * 100
+            print(f"Win Rate: {wr:.1f}%")
+
+        print("=" * 60)
+
         if self.mt5:
             self.mt5.disconnect()
 
-    def print_final_stats(self):
-        """Print final statistics"""
-        runtime = datetime.now() - self.stats['start_time'] if self.stats['start_time'] else timedelta(0)
-
-        print("\n" + "=" * 60)
-        print(" SMC TRADE BOT - FINAL STATISTICS")
-        print("=" * 60)
-        print(f"Runtime: {runtime}")
-        print(f"Analyses Performed: {self.stats['analyses_performed']}")
-        print(f"Signals Generated: {self.stats['signals_generated']}")
-        print(f"Trades Opened: {self.stats['trades_opened']}")
-        print(f"Trades Closed: {self.stats['trades_closed']}")
-        print(f"Total Profit: ${self.stats['total_profit']:.2f}")
-
-        print("\nPer-Symbol Statistics:")
-        for symbol, strategy in self.strategies.items():
-            stats = strategy.get_statistics()
-            print(f"\n  {symbol}:")
-            print(f"    Signals: {stats['signals_generated']}")
-            print(f"    Trades: {stats['trades_entered']}")
-            print(f"    Won: {stats['trades_won']}")
-            print(f"    Lost: {stats['trades_lost']}")
-            print(f"    Win Rate: {stats['win_rate']:.1f}%")
-
-        print("\n" + "=" * 60)
-
 
 def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(description='SMC Trade Bot')
-    parser.add_argument('--test', action='store_true', help='Run in test mode (no real trades)')
-    parser.add_argument('--debug', action='store_true', help='Enable debug output')
-    parser.add_argument('--symbols', nargs='+', default=SYMBOLS, help='Symbols to trade')
-    parser.add_argument('--lot-size', type=float, default=BASE_LOT_SIZE, help='Lot size for trades')
+    parser = argparse.ArgumentParser(description="SMC Trade Bot - Paul's Methodology")
+    parser.add_argument('--test', action='store_true', help='Test mode (no real trades)')
+    parser.add_argument('--debug', action='store_true', help='Debug output')
+    parser.add_argument('--symbols', nargs='+', default=['EURUSD', 'GBPUSD'], help='Symbols')
+    parser.add_argument('--htf', default='H1', help='Higher timeframe (H4, H1)')
+    parser.add_argument('--ltf', default='M5', help='Lower timeframe (M5, M1)')
+    parser.add_argument('--lot-size', type=float, default=0.04, help='Lot size')
 
     args = parser.parse_args()
 
@@ -492,7 +417,9 @@ def main():
         symbols=args.symbols,
         test_mode=args.test,
         debug=args.debug,
-        lot_size=args.lot_size
+        lot_size=args.lot_size,
+        htf=args.htf,
+        ltf=args.ltf
     )
 
     bot.run()
