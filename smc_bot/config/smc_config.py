@@ -239,6 +239,87 @@ MIN_BARS_REQUIRED = {
 }
 
 # =============================================================================
+# ENHANCED POI DETECTION (Volume-Weighted)
+# =============================================================================
+
+# Use volume to weight POI strength
+USE_VOLUME_WEIGHTED_POIS = True
+
+# Volume profile settings
+VOLUME_PROFILE_BINS = 50  # Price level bins for volume clustering
+HIGH_VOLUME_PERCENTILE = 75  # Consider "high volume" above this percentile
+
+# POI strength multipliers
+POI_STRENGTH_MULTIPLIERS = {
+    'equal_highs': 3.0,      # Equal highs/lows are obvious liquidity
+    'equal_lows': 3.0,
+    'session_high': 2.5,     # Session levels are key
+    'session_low': 2.5,
+    'swing_high': 1.5,       # Regular swings
+    'swing_low': 1.5,
+    'imbalance': 1.0,
+}
+
+# Recency weighting - fresher POIs score higher
+POI_RECENCY_DECAY_HOURS = 48  # POI strength decays over this period
+
+# =============================================================================
+# ENHANCED SWEEP ANALYSIS
+# =============================================================================
+
+# Sweep quality scoring thresholds
+SWEEP_QUALITY_THRESHOLDS = {
+    'min_wick_ratio': 0.3,      # Minimum wick/range ratio for valid sweep
+    'strong_wick_ratio': 0.6,   # Strong rejection threshold
+    'excellent_wick_ratio': 0.8, # Excellent rejection threshold
+}
+
+# Sweep depth scoring (pips beyond level)
+SWEEP_DEPTH_SCORING = {
+    'shallow': (1, 3),    # 1-3 pips = shallow (lower score)
+    'optimal': (3, 10),   # 3-10 pips = optimal (highest score)
+    'deep': (10, 20),     # 10-20 pips = deep (moderate score)
+    'excessive': (20, 50), # >20 pips = may continue (lower score)
+}
+
+# Close distance from sweep (how far price closed from extreme)
+SWEEP_CLOSE_DISTANCE_WEIGHT = True
+
+# Minimum sweep quality score to proceed (0-100)
+MIN_SWEEP_QUALITY_SCORE = 40
+
+# =============================================================================
+# ADAPTIVE R:R (ATR-Based Targets)
+# =============================================================================
+
+# Use ATR for dynamic SL/TP calculation
+USE_ADAPTIVE_RR = True
+
+# ATR settings
+ATR_PERIOD = 14
+ATR_TIMEFRAME = 'H1'  # Timeframe for ATR calculation
+
+# Minimum SL in ATR multiples (prevents too tight stops in volatile markets)
+MIN_SL_ATR_MULTIPLE = 0.5
+
+# Maximum SL in ATR multiples (prevents too wide stops)
+MAX_SL_ATR_MULTIPLE = 2.0
+
+# Target R:R multiples (scaled by ATR)
+ADAPTIVE_TP_MULTIPLIERS = [2.0, 4.0, 8.0]  # TP1, TP2, TP3 as multiples of SL
+
+# Volatility adjustment
+VOLATILITY_ADJUSTMENT = {
+    'low': 0.7,      # Low vol = tighter targets (ATR < 50% of avg)
+    'normal': 1.0,   # Normal vol = standard targets
+    'high': 1.3,     # High vol = wider targets (ATR > 150% of avg)
+    'extreme': 1.5,  # Extreme vol = much wider targets (ATR > 200% of avg)
+}
+
+# Minimum R:R regardless of ATR (floor)
+ADAPTIVE_MIN_RR = 2.5
+
+# =============================================================================
 # DEBUG / LOGGING
 # =============================================================================
 

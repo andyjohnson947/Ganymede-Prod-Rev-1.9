@@ -52,6 +52,9 @@ class POI:
     strength: int = 1  # How many times level was tested
     swept: bool = False
     sweep_time: Optional[datetime] = None
+    volume_weight: float = 1.0  # Volume-based strength multiplier
+    recency_score: float = 1.0  # Fresher POIs score higher
+    composite_score: float = 0.0  # Overall POI quality score
 
     def to_dict(self) -> Dict:
         return {
@@ -61,7 +64,32 @@ class POI:
             'created_time': str(self.created_time),
             'timeframe': self.timeframe,
             'strength': self.strength,
-            'swept': self.swept
+            'swept': self.swept,
+            'volume_weight': round(self.volume_weight, 2),
+            'composite_score': round(self.composite_score, 1)
+        }
+
+
+@dataclass
+class SweepAnalysis:
+    """Detailed sweep quality analysis"""
+    is_valid: bool
+    quality_score: float  # 0-100
+    wick_ratio: float  # Wick length / total range
+    sweep_depth_pips: float  # How far beyond level
+    close_distance_pips: float  # How far price closed from extreme
+    rejection_strength: str  # 'weak', 'moderate', 'strong', 'excellent'
+    factors: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict:
+        return {
+            'is_valid': self.is_valid,
+            'quality_score': round(self.quality_score, 1),
+            'wick_ratio': round(self.wick_ratio, 2),
+            'sweep_depth_pips': round(self.sweep_depth_pips, 1),
+            'close_distance_pips': round(self.close_distance_pips, 1),
+            'rejection_strength': self.rejection_strength,
+            'factors': self.factors
         }
 
 
@@ -99,6 +127,9 @@ class TradeSetup:
     quality_score: Optional[int] = None
     quality_grade: Optional[str] = None
     size_multiplier: float = 1.0
+    sweep_analysis: Optional[SweepAnalysis] = None
+    atr_value: Optional[float] = None
+    volatility_regime: str = 'normal'
 
     def to_dict(self) -> Dict:
         return {
@@ -112,7 +143,10 @@ class TradeSetup:
             'rr': self.risk_reward,
             'quality_score': self.quality_score,
             'quality_grade': self.quality_grade,
-            'size_multiplier': self.size_multiplier
+            'size_multiplier': self.size_multiplier,
+            'sweep_analysis': self.sweep_analysis.to_dict() if self.sweep_analysis else None,
+            'atr': self.atr_value,
+            'volatility': self.volatility_regime
         }
 
 
@@ -165,6 +199,14 @@ class PaulSMCStrategy:
         # Swing tracking for MSS
         self.ltf_swing_highs: List[Tuple[float, datetime, int]] = []
         self.ltf_swing_lows: List[Tuple[float, datetime, int]] = []
+
+        # ATR tracking for adaptive R:R
+        self.current_atr: Optional[float] = None
+        self.atr_history: List[float] = []
+        self.volatility_regime: str = 'normal'
+
+        # Sweep analysis tracking
+        self.last_sweep_analysis: Optional[SweepAnalysis] = None
 
         # Statistics
         self.setups_found = 0
@@ -338,12 +380,429 @@ class PaulSMCStrategy:
         return imbalances
 
     # =========================================================================
+    # ENHANCED POI DETECTION (Volume-Weighted)
+    # =========================================================================
+
+    def _calculate_volume_profile(self, data: pd.DataFrame, bins: int = 50) -> Dict[float, float]:
+        """
+        Calculate volume profile - volume at each price level
+
+        Returns dict mapping price levels to volume concentration
+        """
+        if 'tick_volume' not in data.columns and 'volume' not in data.columns:
+            # No volume data, return empty
+            return {}
+
+        vol_col = 'tick_volume' if 'tick_volume' in data.columns else 'volume'
+
+        # Get price range
+        price_min = data['low'].min()
+        price_max = data['high'].max()
+        price_range = price_max - price_min
+
+        if price_range <= 0:
+            return {}
+
+        bin_size = price_range / bins
+        volume_profile = {}
+
+        # Distribute volume across price levels touched by each candle
+        for _, row in data.iterrows():
+            candle_low = row['low']
+            candle_high = row['high']
+            candle_volume = row[vol_col]
+
+            # Find bins this candle touches
+            start_bin = int((candle_low - price_min) / bin_size)
+            end_bin = int((candle_high - price_min) / bin_size)
+
+            # Distribute volume evenly across touched bins
+            bins_touched = max(1, end_bin - start_bin + 1)
+            vol_per_bin = candle_volume / bins_touched
+
+            for b in range(start_bin, end_bin + 1):
+                price_level = round(price_min + (b + 0.5) * bin_size, 5)
+                volume_profile[price_level] = volume_profile.get(price_level, 0) + vol_per_bin
+
+        return volume_profile
+
+    def _get_volume_at_level(self, volume_profile: Dict[float, float], level: float, tolerance: float = 0.0005) -> float:
+        """Get volume concentration at a specific price level"""
+        if not volume_profile:
+            return 1.0  # Default weight if no volume data
+
+        # Find closest price level in profile
+        closest_vol = 0
+        for price, vol in volume_profile.items():
+            if abs(price - level) <= tolerance:
+                closest_vol = max(closest_vol, vol)
+
+        if closest_vol == 0:
+            return 1.0
+
+        # Normalize against average volume
+        avg_vol = sum(volume_profile.values()) / len(volume_profile)
+        return closest_vol / avg_vol if avg_vol > 0 else 1.0
+
+    def _calculate_poi_recency_score(self, created_time: datetime) -> float:
+        """Calculate recency score - fresher POIs score higher"""
+        from smc_bot.config.smc_config import POI_RECENCY_DECAY_HOURS
+
+        if not created_time:
+            return 0.5
+
+        age_hours = (datetime.now() - created_time).total_seconds() / 3600
+
+        # Exponential decay
+        if age_hours <= 0:
+            return 1.0
+        elif age_hours >= POI_RECENCY_DECAY_HOURS:
+            return 0.3  # Minimum score for old POIs
+
+        # Linear decay from 1.0 to 0.3 over decay period
+        decay_factor = 1.0 - (0.7 * (age_hours / POI_RECENCY_DECAY_HOURS))
+        return max(0.3, decay_factor)
+
+    def _calculate_poi_composite_score(self, poi: POI, volume_profile: Dict[float, float]) -> float:
+        """
+        Calculate composite POI score combining multiple factors
+
+        Factors:
+        - POI type strength multiplier
+        - Volume concentration at level
+        - Recency score
+        - Number of touches/tests
+        """
+        from smc_bot.config.smc_config import POI_STRENGTH_MULTIPLIERS, USE_VOLUME_WEIGHTED_POIS
+
+        # Base score from POI type
+        type_multiplier = POI_STRENGTH_MULTIPLIERS.get(poi.poi_type, 1.0)
+
+        # Volume weight
+        if USE_VOLUME_WEIGHTED_POIS and volume_profile:
+            volume_weight = self._get_volume_at_level(volume_profile, poi.level)
+            poi.volume_weight = volume_weight
+        else:
+            volume_weight = 1.0
+            poi.volume_weight = 1.0
+
+        # Recency score
+        recency_score = self._calculate_poi_recency_score(poi.created_time)
+        poi.recency_score = recency_score
+
+        # Touch strength (more touches = stronger level)
+        touch_multiplier = min(poi.strength * 0.5 + 0.5, 2.0)  # 1-4 touches: 1.0-2.0x
+
+        # Composite score (0-100 scale)
+        composite = (
+            type_multiplier * 15 +      # Max ~45 for equal highs/lows
+            volume_weight * 20 +         # Max ~40 for high volume
+            recency_score * 20 +         # Max 20 for fresh POIs
+            touch_multiplier * 10        # Max 20 for multiple touches
+        )
+
+        poi.composite_score = min(100, composite)
+        return poi.composite_score
+
+    def identify_htf_pois_enhanced(self, htf_data: pd.DataFrame) -> List[POI]:
+        """
+        Enhanced POI identification with volume weighting
+
+        Returns POIs sorted by composite score (best first)
+        """
+        # First, do basic POI detection
+        pois = self.identify_htf_pois(htf_data)
+
+        # Calculate volume profile
+        volume_profile = self._calculate_volume_profile(htf_data)
+
+        # Score each POI
+        for poi in pois:
+            self._calculate_poi_composite_score(poi, volume_profile)
+
+        # Sort by composite score (highest first)
+        pois.sort(key=lambda p: p.composite_score, reverse=True)
+
+        # Keep top POIs (avoid information overload)
+        self.htf_pois = pois[:15]
+
+        if pois:
+            print(f"[POI] Identified {len(self.htf_pois)} POIs (top scores: {[f'{p.composite_score:.0f}' for p in self.htf_pois[:5]]})")
+
+        return self.htf_pois
+
+    # =========================================================================
+    # ENHANCED SWEEP ANALYSIS
+    # =========================================================================
+
+    def analyze_sweep_quality(
+        self,
+        candle: pd.Series,
+        poi: POI,
+        direction: TradeDirection
+    ) -> SweepAnalysis:
+        """
+        Comprehensive sweep quality analysis
+
+        Scores the sweep based on:
+        - Wick ratio (rejection strength)
+        - Sweep depth (how far beyond level)
+        - Close distance from extreme
+        - Candle structure
+        """
+        from smc_bot.config.smc_config import (
+            SWEEP_QUALITY_THRESHOLDS,
+            SWEEP_DEPTH_SCORING,
+            MIN_SWEEP_QUALITY_SCORE
+        )
+
+        factors = []
+        score = 0
+
+        candle_range = candle['high'] - candle['low']
+        if candle_range <= 0:
+            return SweepAnalysis(
+                is_valid=False, quality_score=0, wick_ratio=0,
+                sweep_depth_pips=0, close_distance_pips=0,
+                rejection_strength='none', factors=['Invalid candle range']
+            )
+
+        # Calculate metrics based on direction
+        if direction == TradeDirection.SHORT:
+            # Bearish setup - price swept above high
+            sweep_extreme = candle['high']
+            sweep_depth = sweep_extreme - poi.level
+            wick_length = candle['high'] - max(candle['open'], candle['close'])
+            close_distance = sweep_extreme - candle['close']
+        else:
+            # Bullish setup - price swept below low
+            sweep_extreme = candle['low']
+            sweep_depth = poi.level - sweep_extreme
+            wick_length = min(candle['open'], candle['close']) - candle['low']
+            close_distance = candle['close'] - sweep_extreme
+
+        # Convert to pips
+        sweep_depth_pips = sweep_depth / self.pip_value
+        close_distance_pips = close_distance / self.pip_value
+        wick_ratio = wick_length / candle_range if candle_range > 0 else 0
+
+        # 1. Score wick ratio (0-35 points)
+        thresholds = SWEEP_QUALITY_THRESHOLDS
+        if wick_ratio >= thresholds['excellent_wick_ratio']:
+            score += 35
+            rejection_strength = 'excellent'
+            factors.append(f"Excellent rejection (wick ratio: {wick_ratio:.1%})")
+        elif wick_ratio >= thresholds['strong_wick_ratio']:
+            score += 28
+            rejection_strength = 'strong'
+            factors.append(f"Strong rejection (wick ratio: {wick_ratio:.1%})")
+        elif wick_ratio >= thresholds['min_wick_ratio']:
+            score += 18
+            rejection_strength = 'moderate'
+            factors.append(f"Moderate rejection (wick ratio: {wick_ratio:.1%})")
+        else:
+            score += 5
+            rejection_strength = 'weak'
+            factors.append(f"Weak rejection (wick ratio: {wick_ratio:.1%})")
+
+        # 2. Score sweep depth (0-30 points)
+        depth_ranges = SWEEP_DEPTH_SCORING
+        if depth_ranges['optimal'][0] <= sweep_depth_pips <= depth_ranges['optimal'][1]:
+            score += 30
+            factors.append(f"Optimal sweep depth ({sweep_depth_pips:.1f} pips)")
+        elif depth_ranges['shallow'][0] <= sweep_depth_pips < depth_ranges['shallow'][1]:
+            score += 15
+            factors.append(f"Shallow sweep ({sweep_depth_pips:.1f} pips)")
+        elif depth_ranges['deep'][0] < sweep_depth_pips <= depth_ranges['deep'][1]:
+            score += 20
+            factors.append(f"Deep sweep ({sweep_depth_pips:.1f} pips)")
+        elif sweep_depth_pips > depth_ranges['excessive'][0]:
+            score += 10
+            factors.append(f"Excessive sweep - may continue ({sweep_depth_pips:.1f} pips)")
+        else:
+            score += 5
+            factors.append(f"Minimal sweep ({sweep_depth_pips:.1f} pips)")
+
+        # 3. Score close distance from extreme (0-25 points)
+        if close_distance_pips >= 5:
+            score += 25
+            factors.append(f"Strong close away from extreme ({close_distance_pips:.1f} pips)")
+        elif close_distance_pips >= 3:
+            score += 18
+            factors.append(f"Good close distance ({close_distance_pips:.1f} pips)")
+        elif close_distance_pips >= 1:
+            score += 10
+            factors.append(f"Moderate close distance ({close_distance_pips:.1f} pips)")
+        else:
+            score += 3
+            factors.append(f"Closed near extreme ({close_distance_pips:.1f} pips)")
+
+        # 4. Bonus for closed back inside level (0-10 points)
+        if direction == TradeDirection.SHORT and candle['close'] < poi.level:
+            score += 10
+            factors.append("Closed back below POI level")
+        elif direction == TradeDirection.LONG and candle['close'] > poi.level:
+            score += 10
+            factors.append("Closed back above POI level")
+
+        # Determine if sweep is valid
+        is_valid = score >= MIN_SWEEP_QUALITY_SCORE
+
+        sweep_analysis = SweepAnalysis(
+            is_valid=is_valid,
+            quality_score=min(100, score),
+            wick_ratio=wick_ratio,
+            sweep_depth_pips=sweep_depth_pips,
+            close_distance_pips=close_distance_pips,
+            rejection_strength=rejection_strength,
+            factors=factors
+        )
+
+        self.last_sweep_analysis = sweep_analysis
+        return sweep_analysis
+
+    # =========================================================================
+    # ADAPTIVE R:R (ATR-Based)
+    # =========================================================================
+
+    def calculate_atr(self, data: pd.DataFrame, period: int = 14) -> float:
+        """Calculate Average True Range"""
+        if len(data) < period + 1:
+            return 0
+
+        high = data['high']
+        low = data['low']
+        close = data['close']
+
+        # True Range components
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+
+        # True Range is max of the three
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        # ATR is smoothed average
+        atr = tr.rolling(window=period).mean().iloc[-1]
+
+        return atr
+
+    def determine_volatility_regime(self, current_atr: float, data: pd.DataFrame) -> str:
+        """
+        Determine current volatility regime based on ATR
+
+        Returns: 'low', 'normal', 'high', 'extreme'
+        """
+        from smc_bot.config.smc_config import ATR_PERIOD
+
+        # Calculate historical ATR for comparison
+        if len(data) < ATR_PERIOD * 5:
+            return 'normal'
+
+        # Get ATR over longer period for baseline
+        historical_atrs = []
+        for i in range(ATR_PERIOD, len(data), ATR_PERIOD):
+            subset = data.iloc[max(0, i - ATR_PERIOD * 2):i]
+            if len(subset) >= ATR_PERIOD:
+                hist_atr = self.calculate_atr(subset, ATR_PERIOD)
+                if hist_atr > 0:
+                    historical_atrs.append(hist_atr)
+
+        if not historical_atrs:
+            return 'normal'
+
+        avg_atr = sum(historical_atrs) / len(historical_atrs)
+
+        if avg_atr <= 0:
+            return 'normal'
+
+        ratio = current_atr / avg_atr
+
+        if ratio < 0.5:
+            return 'low'
+        elif ratio < 1.5:
+            return 'normal'
+        elif ratio < 2.0:
+            return 'high'
+        else:
+            return 'extreme'
+
+    def calculate_adaptive_targets(
+        self,
+        entry_price: float,
+        base_sl: float,
+        direction: TradeDirection,
+        atr: float,
+        volatility_regime: str
+    ) -> Tuple[float, List[float]]:
+        """
+        Calculate adaptive SL and TP levels based on ATR
+
+        Returns: (adjusted_sl, [tp1, tp2, tp3])
+        """
+        from smc_bot.config.smc_config import (
+            MIN_SL_ATR_MULTIPLE,
+            MAX_SL_ATR_MULTIPLE,
+            ADAPTIVE_TP_MULTIPLIERS,
+            VOLATILITY_ADJUSTMENT,
+            ADAPTIVE_MIN_RR
+        )
+
+        # Get volatility adjustment factor
+        vol_factor = VOLATILITY_ADJUSTMENT.get(volatility_regime, 1.0)
+
+        # Calculate base SL distance
+        base_sl_distance = abs(entry_price - base_sl)
+
+        # Ensure SL is within ATR bounds
+        min_sl_distance = atr * MIN_SL_ATR_MULTIPLE
+        max_sl_distance = atr * MAX_SL_ATR_MULTIPLE
+
+        # Adjust SL if needed
+        adjusted_sl_distance = base_sl_distance
+
+        if base_sl_distance < min_sl_distance:
+            # SL too tight for current volatility
+            adjusted_sl_distance = min_sl_distance
+            print(f"[ATR] Widening SL from {base_sl_distance/self.pip_value:.1f} to {adjusted_sl_distance/self.pip_value:.1f} pips (min ATR bound)")
+        elif base_sl_distance > max_sl_distance:
+            # SL too wide
+            adjusted_sl_distance = max_sl_distance
+            print(f"[ATR] Tightening SL from {base_sl_distance/self.pip_value:.1f} to {adjusted_sl_distance/self.pip_value:.1f} pips (max ATR bound)")
+
+        # Calculate adjusted SL price
+        if direction == TradeDirection.LONG:
+            adjusted_sl = entry_price - adjusted_sl_distance
+        else:
+            adjusted_sl = entry_price + adjusted_sl_distance
+
+        # Calculate TPs using volatility-adjusted multipliers
+        take_profits = []
+        for multiplier in ADAPTIVE_TP_MULTIPLIERS:
+            # Adjust multiplier by volatility
+            adjusted_multiplier = multiplier * vol_factor
+
+            # Ensure minimum R:R
+            adjusted_multiplier = max(adjusted_multiplier, ADAPTIVE_MIN_RR)
+
+            tp_distance = adjusted_sl_distance * adjusted_multiplier
+
+            if direction == TradeDirection.LONG:
+                tp = entry_price + tp_distance
+            else:
+                tp = entry_price - tp_distance
+
+            take_profits.append(round(tp, 5))
+
+        return round(adjusted_sl, 5), take_profits
+
+    # =========================================================================
     # LIQUIDITY SWEEP DETECTION
     # =========================================================================
 
     def check_liquidity_sweep(self, current_candle: pd.Series, previous_candle: pd.Series) -> Optional[Dict]:
         """
-        Check if liquidity was swept
+        Check if liquidity was swept with enhanced quality analysis
 
         Sweep = price runs beyond a POI level then closes back
 
@@ -354,24 +813,42 @@ class PaulSMCStrategy:
 
         sweep_min = SWEEP_MIN_PENETRATION_PIPS * self.pip_value
 
-        for poi in self.htf_pois:
-            if poi.swept:
-                continue
+        # Sort POIs by composite score (prioritize higher quality POIs)
+        sorted_pois = sorted(
+            [p for p in self.htf_pois if not p.swept],
+            key=lambda p: p.composite_score,
+            reverse=True
+        )
 
+        for poi in sorted_pois:
             # Check for sweep of highs (bearish setup)
             if poi.direction == TradeDirection.SHORT:
                 # Price went above the high
                 if current_candle['high'] > poi.level + sweep_min:
                     # And closed back below (trap!)
                     if not SWEEP_MUST_CLOSE_BACK or current_candle['close'] < poi.level:
+                        # Analyze sweep quality
+                        sweep_analysis = self.analyze_sweep_quality(
+                            current_candle, poi, TradeDirection.SHORT
+                        )
+
+                        if not sweep_analysis.is_valid:
+                            print(f"[SWEEP] Rejected - Quality too low ({sweep_analysis.quality_score:.0f}/100)")
+                            continue
+
                         poi.swept = True
                         poi.sweep_time = current_candle['time'] if 'time' in current_candle else datetime.now()
+
+                        print(f"[SWEEP] Quality: {sweep_analysis.quality_score:.0f}/100 ({sweep_analysis.rejection_strength})")
+                        for factor in sweep_analysis.factors[:3]:
+                            print(f"  + {factor}")
 
                         return {
                             'poi': poi,
                             'sweep_high': current_candle['high'],
                             'direction': TradeDirection.SHORT,
-                            'message': f"Liquidity swept above {poi.poi_type} @ {poi.level:.5f}"
+                            'sweep_analysis': sweep_analysis,
+                            'message': f"Liquidity swept above {poi.poi_type} @ {poi.level:.5f} (POI score: {poi.composite_score:.0f})"
                         }
 
             # Check for sweep of lows (bullish setup)
@@ -380,14 +857,28 @@ class PaulSMCStrategy:
                 if current_candle['low'] < poi.level - sweep_min:
                     # And closed back above (trap!)
                     if not SWEEP_MUST_CLOSE_BACK or current_candle['close'] > poi.level:
+                        # Analyze sweep quality
+                        sweep_analysis = self.analyze_sweep_quality(
+                            current_candle, poi, TradeDirection.LONG
+                        )
+
+                        if not sweep_analysis.is_valid:
+                            print(f"[SWEEP] Rejected - Quality too low ({sweep_analysis.quality_score:.0f}/100)")
+                            continue
+
                         poi.swept = True
                         poi.sweep_time = current_candle['time'] if 'time' in current_candle else datetime.now()
+
+                        print(f"[SWEEP] Quality: {sweep_analysis.quality_score:.0f}/100 ({sweep_analysis.rejection_strength})")
+                        for factor in sweep_analysis.factors[:3]:
+                            print(f"  + {factor}")
 
                         return {
                             'poi': poi,
                             'sweep_low': current_candle['low'],
                             'direction': TradeDirection.LONG,
-                            'message': f"Liquidity swept below {poi.poi_type} @ {poi.level:.5f}"
+                            'sweep_analysis': sweep_analysis,
+                            'message': f"Liquidity swept below {poi.poi_type} @ {poi.level:.5f} (POI score: {poi.composite_score:.0f})"
                         }
 
         return None
@@ -554,62 +1045,100 @@ class PaulSMCStrategy:
         imbalance: Optional[Imbalance] = None,
         sweep_data: Optional[Dict] = None,
         mss_data: Optional[Dict] = None,
-        context_data: Optional[Dict] = None
+        context_data: Optional[Dict] = None,
+        htf_data: Optional[pd.DataFrame] = None
     ) -> Optional[TradeSetup]:
         """
-        Generate complete trade setup with SL and TPs
+        Generate complete trade setup with adaptive SL and TPs
 
-        SL: Just beyond the sweep level (tight!)
-        TP: Opposite-side liquidity
+        SL: Just beyond the sweep level (adjusted for volatility)
+        TP: Based on ATR and opposite-side liquidity
         """
         from smc_bot.config.smc_config import (
             SL_BEYOND_SWEEP_PIPS,
             MIN_RISK_REWARD,
-            PARTIAL_TP_LEVELS
+            PARTIAL_TP_LEVELS,
+            USE_ADAPTIVE_RR,
+            ATR_PERIOD
         )
 
         sl_buffer = SL_BEYOND_SWEEP_PIPS * self.pip_value
 
-        # Calculate SL
+        # Calculate base SL
         if direction == TradeDirection.LONG:
-            stop_loss = sweep_level - sl_buffer
-            sl_distance = entry_price - stop_loss
+            base_stop_loss = sweep_level - sl_buffer
+            base_sl_distance = entry_price - base_stop_loss
         else:  # SHORT
-            stop_loss = sweep_level + sl_buffer
-            sl_distance = stop_loss - entry_price
+            base_stop_loss = sweep_level + sl_buffer
+            base_sl_distance = base_stop_loss - entry_price
 
-        if sl_distance <= 0:
+        if base_sl_distance <= 0:
             return None
 
-        # Find opposite-side liquidity for TP
+        # =====================================================================
+        # ADAPTIVE R:R - ATR-Based Targets
+        # =====================================================================
+        atr_value = None
+        volatility_regime = 'normal'
+        stop_loss = base_stop_loss
         take_profits = []
-        opposite_pois = [p for p in self.htf_pois if p.direction != direction and not p.swept]
 
+        if USE_ADAPTIVE_RR and htf_data is not None and len(htf_data) >= ATR_PERIOD + 1:
+            # Calculate current ATR
+            atr_value = self.calculate_atr(htf_data, ATR_PERIOD)
+            self.current_atr = atr_value
+
+            if atr_value > 0:
+                # Determine volatility regime
+                volatility_regime = self.determine_volatility_regime(atr_value, htf_data)
+                self.volatility_regime = volatility_regime
+
+                print(f"[ATR] Current: {atr_value/self.pip_value:.1f} pips | Volatility: {volatility_regime}")
+
+                # Calculate adaptive SL and TPs
+                stop_loss, take_profits = self.calculate_adaptive_targets(
+                    entry_price=entry_price,
+                    base_sl=base_stop_loss,
+                    direction=direction,
+                    atr=atr_value,
+                    volatility_regime=volatility_regime
+                )
+
+        # Recalculate SL distance after potential adjustment
         if direction == TradeDirection.LONG:
-            # Look for highs above current price
-            targets = sorted([p.level for p in opposite_pois if p.level > entry_price])
+            sl_distance = entry_price - stop_loss
         else:
-            # Look for lows below current price
-            targets = sorted([p.level for p in opposite_pois if p.level < entry_price], reverse=True)
+            sl_distance = stop_loss - entry_price
 
-        # Calculate R:R for each target
-        for target in targets[:3]:  # Max 3 targets
-            if direction == TradeDirection.LONG:
-                tp_distance = target - entry_price
-            else:
-                tp_distance = entry_price - target
-
-            rr = tp_distance / sl_distance
-            if rr >= MIN_RISK_REWARD:
-                take_profits.append(target)
-
-        # If no opposite liquidity, use R:R based targets
+        # If no adaptive TPs, find opposite-side liquidity
         if not take_profits:
-            for r in [3.0, 5.0, 10.0]:
+            opposite_pois = [p for p in self.htf_pois if p.direction != direction and not p.swept]
+
+            if direction == TradeDirection.LONG:
+                # Look for highs above current price
+                targets = sorted([p.level for p in opposite_pois if p.level > entry_price])
+            else:
+                # Look for lows below current price
+                targets = sorted([p.level for p in opposite_pois if p.level < entry_price], reverse=True)
+
+            # Calculate R:R for each target
+            for target in targets[:3]:  # Max 3 targets
                 if direction == TradeDirection.LONG:
-                    take_profits.append(entry_price + (sl_distance * r))
+                    tp_distance = target - entry_price
                 else:
-                    take_profits.append(entry_price - (sl_distance * r))
+                    tp_distance = entry_price - target
+
+                rr = tp_distance / sl_distance
+                if rr >= MIN_RISK_REWARD:
+                    take_profits.append(target)
+
+            # If no opposite liquidity, use R:R based targets
+            if not take_profits:
+                for r in [3.0, 5.0, 10.0]:
+                    if direction == TradeDirection.LONG:
+                        take_profits.append(entry_price + (sl_distance * r))
+                    else:
+                        take_profits.append(entry_price - (sl_distance * r))
 
         # Calculate overall R:R
         if take_profits:
@@ -622,6 +1151,7 @@ class PaulSMCStrategy:
             risk_reward = 0
 
         if risk_reward < MIN_RISK_REWARD:
+            print(f"[SETUP] Rejected - R:R too low ({risk_reward:.1f} < {MIN_RISK_REWARD})")
             return None
 
         # Calculate SL in pips
@@ -705,6 +1235,9 @@ class PaulSMCStrategy:
 
             print(f"[FILTER] Setup ACCEPTED - Score: {quality_score}, Grade: {quality_grade}, Size: {size_multiplier*100:.0f}%")
 
+        # Get sweep analysis if available
+        sweep_analysis = self.last_sweep_analysis
+
         setup = TradeSetup(
             direction=direction,
             entry_price=round(entry_price, 5),
@@ -718,7 +1251,10 @@ class PaulSMCStrategy:
             setup_time=datetime.now(),
             quality_score=quality_score,
             quality_grade=quality_grade,
-            size_multiplier=size_multiplier
+            size_multiplier=size_multiplier,
+            sweep_analysis=sweep_analysis,
+            atr_value=atr_value,
+            volatility_regime=volatility_regime
         )
 
         self.setups_found += 1
@@ -738,9 +1274,14 @@ class PaulSMCStrategy:
 
         Returns TradeSetup if valid entry conditions are met
         """
+        from smc_bot.config.smc_config import USE_VOLUME_WEIGHTED_POIS
+
         # Step 1: Identify HTF POIs (if not done or stale)
         if not self.htf_pois or len(self.htf_pois) < 3:
-            self.identify_htf_pois(htf_data)
+            if USE_VOLUME_WEIGHTED_POIS:
+                self.identify_htf_pois_enhanced(htf_data)
+            else:
+                self.identify_htf_pois(htf_data)
             self.identify_imbalances(htf_data, self.htf)
 
         # Step 2: Check current state and progress
@@ -797,16 +1338,19 @@ class PaulSMCStrategy:
                         sweep_level=self.sweep_level,
                         poi=self.current_poi,
                         mss_level=self.mss_level,
-                        imbalance=pullback.get('imbalance')
+                        imbalance=pullback.get('imbalance'),
+                        htf_data=htf_data  # Pass HTF data for ATR calculation
                     )
                     if setup:
                         self.state = SetupState.ENTRY_TRIGGERED
                         self.pending_setup = setup
                         print(f"[SMC] {pullback['message']}")
                         print(f"[SMC] TRADE SETUP: {setup.direction.value.upper()} @ {setup.entry_price:.5f}")
-                        print(f"[SMC]   SL: {setup.stop_loss:.5f}")
+                        print(f"[SMC]   SL: {setup.stop_loss:.5f} | ATR: {setup.atr_value/self.pip_value:.1f} pips" if setup.atr_value else f"[SMC]   SL: {setup.stop_loss:.5f}")
                         print(f"[SMC]   TPs: {[f'{tp:.5f}' for tp in setup.take_profits]}")
-                        print(f"[SMC]   R:R: {setup.risk_reward}")
+                        print(f"[SMC]   R:R: {setup.risk_reward} | Volatility: {setup.volatility_regime}")
+                        if setup.sweep_analysis:
+                            print(f"[SMC]   Sweep Quality: {setup.sweep_analysis.quality_score:.0f}/100 ({setup.sweep_analysis.rejection_strength})")
                         return setup
 
         return None
@@ -900,20 +1444,29 @@ class PaulSMCStrategy:
         }
 
     def print_pois(self):
-        """Print current POIs"""
-        print(f"\n{'='*50}")
+        """Print current POIs with enhanced scoring info"""
+        print(f"\n{'='*60}")
         print(f"POINTS OF INTEREST - {self.symbol}")
-        print(f"{'='*50}")
+        print(f"{'='*60}")
 
         shorts = [p for p in self.htf_pois if p.direction == TradeDirection.SHORT and not p.swept]
         longs = [p for p in self.htf_pois if p.direction == TradeDirection.LONG and not p.swept]
 
-        print(f"\nSELL ZONES (liquidity above):")
-        for poi in sorted(shorts, key=lambda x: x.level, reverse=True)[:5]:
-            print(f"  {poi.level:.5f} - {poi.poi_type} (strength: {poi.strength})")
+        # Sort by composite score
+        shorts = sorted(shorts, key=lambda x: x.composite_score, reverse=True)
+        longs = sorted(longs, key=lambda x: x.composite_score, reverse=True)
 
-        print(f"\nBUY ZONES (liquidity below):")
-        for poi in sorted(longs, key=lambda x: x.level)[:5]:
-            print(f"  {poi.level:.5f} - {poi.poi_type} (strength: {poi.strength})")
+        print(f"\nSELL ZONES (liquidity above) - sorted by quality:")
+        for poi in shorts[:5]:
+            vol_str = f"vol:{poi.volume_weight:.1f}x" if poi.volume_weight != 1.0 else ""
+            print(f"  {poi.level:.5f} - {poi.poi_type} | Score: {poi.composite_score:.0f} {vol_str}")
 
-        print(f"{'='*50}\n")
+        print(f"\nBUY ZONES (liquidity below) - sorted by quality:")
+        for poi in longs[:5]:
+            vol_str = f"vol:{poi.volume_weight:.1f}x" if poi.volume_weight != 1.0 else ""
+            print(f"  {poi.level:.5f} - {poi.poi_type} | Score: {poi.composite_score:.0f} {vol_str}")
+
+        if self.current_atr:
+            print(f"\nVOLATILITY: ATR = {self.current_atr/self.pip_value:.1f} pips | Regime: {self.volatility_regime}")
+
+        print(f"{'='*60}\n")
