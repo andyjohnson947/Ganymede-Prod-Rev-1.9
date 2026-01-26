@@ -3507,6 +3507,12 @@ class RecoveryManager:
             from indicators.adx import calculate_adx, interpret_adx, analyze_candle_direction
 
             # Calculate ADX
+            # DEBUG: Print last close prices to verify unique data per symbol
+            if len(current_data) > 0:
+                last_close = current_data['close'].iloc[-1]
+                last_time = current_data.index[-1] if hasattr(current_data.index[-1], 'strftime') else str(current_data.index[-1])
+                print(f"   [DEBUG] {symbol}: Last close={last_close:.5f}, Time={last_time}, Data rows={len(current_data)}")
+
             data_with_adx = calculate_adx(current_data.copy(), period=14)
             if data_with_adx is None or data_with_adx.empty:
                 return {
