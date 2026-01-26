@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "timestamp": "2026-01-26T09:25:47.521796",
+  "timestamp": "2026-01-26T09:53:44.955324",
   "tracked_positions": {},
   "archived_positions": [
     {
@@ -2696,5 +2696,11 @@
       "closed_time": "2026-01-22T11:50:53.108468+00:00",
       "status": "closed"
     }
-  ]
+  ],
+  "cascade_blocks": {},
+  "market_trending_block": {
+    "EURUSD": true,
+    "GBPUSD": true
+  },
+  "last_block_update": "2026-01-26T09:53:48.017970"
 }

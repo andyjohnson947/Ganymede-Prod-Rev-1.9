@@ -339,7 +339,7 @@ ENABLE_TIME_FILTERS = True
 #
 # IMPORTANT: All trading hours in this config are in GMT/UTC.
 # The bot will automatically convert broker time to GMT using this offset.
-BROKER_GMT_OFFSET = -5  # SET THIS TO YOUR BROKER'S OFFSET!
+BROKER_GMT_OFFSET = +2  # SET THIS TO YOUR BROKER'S OFFSET!
 
 # =============================================================================
 
