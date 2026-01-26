@@ -1,15 +1,42 @@
 """
 Average Directional Index (ADX) - Trend Strength Indicator
 Used to determine if market is trending or ranging
+
+Uses Wilder's smoothing method to match MT4/MT5/TradingView calculations.
 """
 
 import pandas as pd
 import numpy as np
 
 
+def wilder_smooth(values: pd.Series, period: int) -> pd.Series:
+    """
+    Wilder's smoothing method (used by MT4/MT5/TradingView)
+
+    Formula:
+    - First value: Simple average of first N periods
+    - Subsequent: Previous_Smoothed - (Previous_Smoothed / N) + Current_Value
+
+    This is equivalent to EMA with alpha = 1/period but calculated differently
+    to match exactly what trading platforms use.
+    """
+    smoothed = pd.Series(index=values.index, dtype=float)
+
+    # First value is simple average of first 'period' values
+    smoothed.iloc[period - 1] = values.iloc[:period].mean()
+
+    # Subsequent values use Wilder's formula
+    for i in range(period, len(values)):
+        smoothed.iloc[i] = smoothed.iloc[i - 1] - (smoothed.iloc[i - 1] / period) + values.iloc[i]
+
+    return smoothed
+
+
 def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     """
-    Calculate ADX (Average Directional Index)
+    Calculate ADX (Average Directional Index) using Wilder's method
+
+    This matches MT4/MT5/TradingView ADX calculations.
 
     Args:
         data: DataFrame with 'high', 'low', 'close' columns
@@ -19,6 +46,13 @@ def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.DataFrame:
         DataFrame with ADX, +DI, -DI columns added
     """
     df = data.copy()
+
+    if len(df) < period + 1:
+        df['adx'] = np.nan
+        df['plus_di'] = np.nan
+        df['minus_di'] = np.nan
+        df['atr'] = np.nan
+        return df
 
     # Calculate True Range
     df['high_low'] = df['high'] - df['low']
@@ -42,18 +76,23 @@ def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.DataFrame:
         0
     )
 
-    # Smooth the values using Wilder's smoothing (exponential moving average)
-    alpha = 1.0 / period
+    # Smooth TR and DM using Wilder's method
+    df['atr'] = wilder_smooth(df['tr'], period)
+    smoothed_plus_dm = wilder_smooth(df['plus_dm'], period)
+    smoothed_minus_dm = wilder_smooth(df['minus_dm'], period)
 
-    df['atr'] = df['tr'].ewm(alpha=alpha, adjust=False).mean()
-    df['plus_di'] = 100 * (df['plus_dm'].ewm(alpha=alpha, adjust=False).mean() / df['atr'])
-    df['minus_di'] = 100 * (df['minus_dm'].ewm(alpha=alpha, adjust=False).mean() / df['atr'])
+    # Calculate +DI and -DI
+    df['plus_di'] = 100 * (smoothed_plus_dm / df['atr'])
+    df['minus_di'] = 100 * (smoothed_minus_dm / df['atr'])
 
     # Calculate DX (Directional Index)
-    df['dx'] = 100 * np.abs(df['plus_di'] - df['minus_di']) / (df['plus_di'] + df['minus_di'])
+    di_sum = df['plus_di'] + df['minus_di']
+    di_diff = np.abs(df['plus_di'] - df['minus_di'])
+    df['dx'] = np.where(di_sum != 0, 100 * di_diff / di_sum, 0)
 
-    # Calculate ADX (smoothed DX)
-    df['adx'] = df['dx'].ewm(alpha=alpha, adjust=False).mean()
+    # Calculate ADX (smoothed DX using Wilder's method)
+    # ADX smoothing starts after we have enough DX values
+    df['adx'] = wilder_smooth(df['dx'], period)
 
     # Clean up intermediate columns
     df.drop(['high_low', 'high_close', 'low_close', 'tr', 'up_move', 'down_move',
