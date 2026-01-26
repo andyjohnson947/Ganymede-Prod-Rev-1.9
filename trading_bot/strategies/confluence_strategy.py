@@ -1127,10 +1127,18 @@ class ConfluenceStrategy:
         if symbol not in self.market_data_cache:
             return
 
+        # Track blocking reasons for visibility
+        blocking_reasons = []
+
+        # Check if market is blocked due to trending (ADX > 40)
+        if hasattr(self, 'market_trending_block') and self.market_trending_block.get(symbol, False):
+            blocking_reasons.append("ADX > 40 (strong trend)")
+
         # Check if symbol is tradeable based on portfolio trading windows (bypass in test mode)
         if not self.test_mode and not self.portfolio_manager.is_symbol_tradeable(symbol):
-            if self.debug:
-                print(f"   [TIME] {symbol}: Outside trading window", flush=True)
+            blocking_reasons.append("Outside trading window")
+            # Show blocking summary
+            print(f"   [BLOCKED] {symbol}: {', '.join(blocking_reasons)}", flush=True)
             return  # Not in trading window for this symbol
 
         cache = self.market_data_cache[symbol]
@@ -1149,6 +1157,20 @@ class ConfluenceStrategy:
         else:
             can_trade_mr = self.time_filter.can_trade_mean_reversion(current_time)
             can_trade_bo = self.time_filter.can_trade_breakout(current_time)
+
+        # Add time filter blocking reasons
+        if not can_trade_mr:
+            blocking_reasons.append("Mean reversion: outside allowed hours/days")
+        if not can_trade_bo:
+            blocking_reasons.append("Breakout: outside allowed hours/days")
+
+        # Show blocking summary if any blocks
+        if blocking_reasons:
+            print(f"   [BLOCKED] {symbol}: {', '.join(blocking_reasons)}", flush=True)
+
+        # Early return if ALL strategies are blocked (no point checking for signals)
+        if not can_trade_mr and not can_trade_bo:
+            return  # Nothing to check
 
         if self.debug:
             print(f"   [INFO] {symbol}: Checking signals (MR: {can_trade_mr}, BO: {can_trade_bo})...", flush=True)

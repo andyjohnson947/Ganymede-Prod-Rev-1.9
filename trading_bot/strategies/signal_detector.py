@@ -156,8 +156,8 @@ class SignalDetector:
         calendar = get_trading_calendar()
         is_allowed, reason = calendar.is_trading_allowed(signal['timestamp'])
         if not is_allowed:
-            if self.debug:
-                print(f"   🚫 {symbol}: Trading restricted - {reason}", flush=True)
+            # Always show calendar restrictions (not just debug mode)
+            print(f"   [CALENDAR] {symbol}: {reason}", flush=True)
             signal['should_trade'] = False
             signal['reject_reason'] = reason
             return None  # Don't trade during restricted periods
