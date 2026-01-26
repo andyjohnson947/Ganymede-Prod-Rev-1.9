@@ -87,7 +87,7 @@ class SMCTradeBot:
         }
 
         # Risk management
-        from trading_bot.config.smc_config import (
+        from smc_bot.config.smc_config import (
             RISK_PER_TRADE_PERCENT,
             MAX_DAILY_LOSS_PERCENT,
             MAX_TRADES_PER_DAY
@@ -126,7 +126,7 @@ class SMCTradeBot:
 
     def initialize_strategies(self):
         """Initialize strategy for each symbol"""
-        from trading_bot.strategies.paul_smc_strategy import PaulSMCStrategy
+        from smc_bot.strategies.paul_smc_strategy import PaulSMCStrategy
 
         for symbol in self.symbols:
             pip_value = 0.0001 if 'JPY' not in symbol else 0.01
@@ -141,7 +141,7 @@ class SMCTradeBot:
     def fetch_data(self, symbol: str) -> Optional[Dict]:
         """Fetch HTF and LTF data"""
         try:
-            from trading_bot.config.smc_config import MIN_BARS_REQUIRED
+            from smc_bot.config.smc_config import MIN_BARS_REQUIRED
 
             htf_bars = MIN_BARS_REQUIRED.get(self.htf, 200)
             ltf_bars = MIN_BARS_REQUIRED.get(self.ltf, 500)
@@ -258,7 +258,7 @@ class SMCTradeBot:
 
         If price goes back beyond the sweep level, exit immediately
         """
-        from trading_bot.config.smc_config import RESWEEP_INVALIDATES_TRADE
+        from smc_bot.config.smc_config import RESWEEP_INVALIDATES_TRADE
 
         if not RESWEEP_INVALIDATES_TRADE:
             return False

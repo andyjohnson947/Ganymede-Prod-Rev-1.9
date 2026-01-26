@@ -144,7 +144,7 @@ class PaulSMCStrategy:
         self.use_quality_filter = use_quality_filter
 
         # Initialize quality filter
-        from strategies.setup_quality_filter import SetupQualityFilter
+        from smc_bot.strategies.setup_quality_filter import SetupQualityFilter
         self.quality_filter = SetupQualityFilter(min_score=min_quality_score, pip_value=pip_value)
 
         # POIs storage
@@ -246,7 +246,7 @@ class PaulSMCStrategy:
 
         These are key POIs for intraday trading
         """
-        from config.smc_config import SESSIONS
+        from smc_bot.config.smc_config import SESSIONS
 
         session_config = SESSIONS.get(session, {})
         if not session_config.get('enabled', False):
@@ -350,7 +350,7 @@ class PaulSMCStrategy:
         For SHORTS: Price sweeps ABOVE high, then closes below
         For LONGS: Price sweeps BELOW low, then closes above
         """
-        from config.smc_config import SWEEP_MIN_PENETRATION_PIPS, SWEEP_MUST_CLOSE_BACK
+        from smc_bot.config.smc_config import SWEEP_MIN_PENETRATION_PIPS, SWEEP_MUST_CLOSE_BACK
 
         sweep_min = SWEEP_MIN_PENETRATION_PIPS * self.pip_value
 
@@ -413,7 +413,7 @@ class PaulSMCStrategy:
         For LONGS (after sweep of lows):
             MSS = Price breaks above recent LTF swing high
         """
-        from config.smc_config import MSS_CLOSE_CONFIRMATION
+        from smc_bot.config.smc_config import MSS_CLOSE_CONFIRMATION
 
         if len(ltf_data) < 5:
             return None
@@ -562,7 +562,7 @@ class PaulSMCStrategy:
         SL: Just beyond the sweep level (tight!)
         TP: Opposite-side liquidity
         """
-        from config.smc_config import (
+        from smc_bot.config.smc_config import (
             SL_BEYOND_SWEEP_PIPS,
             MIN_RISK_REWARD,
             PARTIAL_TP_LEVELS
@@ -635,7 +635,7 @@ class PaulSMCStrategy:
         size_multiplier = 1.0
 
         if self.use_quality_filter:
-            from strategies.setup_quality_filter import (
+            from smc_bot.strategies.setup_quality_filter import (
                 create_poi_data, create_sweep_data, create_mss_data,
                 create_entry_data, create_context_data
             )
