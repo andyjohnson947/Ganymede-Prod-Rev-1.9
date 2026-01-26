@@ -21,6 +21,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Add trading_bot directory to path (for mt5_manager's config imports)
+trading_bot_path = project_root / 'trading_bot'
+sys.path.insert(0, str(trading_bot_path))
+
 import argparse
 import time
 from datetime import datetime, timedelta
