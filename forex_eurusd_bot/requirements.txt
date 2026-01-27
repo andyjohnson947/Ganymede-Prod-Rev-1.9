@@ -1,0 +1,6 @@
+# Ryuryu's FOREX MT5 EURUSD Bot Dependencies
+# Install with: pip install -r requirements.txt
+
+MetaTrader5>=5.0.45
+pandas>=1.5.0
+ta>=0.10.2
