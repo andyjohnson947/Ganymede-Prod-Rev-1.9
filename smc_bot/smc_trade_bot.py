@@ -58,7 +58,10 @@ class SMCTradeBot:
         debug: bool = False,
         lot_size: float = 0.04,
         htf: str = 'H1',
-        ltf: str = 'M5'
+        ltf: str = 'M5',
+        login: int = None,
+        password: str = None,
+        server: str = None
     ):
         self.symbols = symbols or ['EURUSD', 'GBPUSD']
         self.test_mode = test_mode
@@ -66,6 +69,11 @@ class SMCTradeBot:
         self.lot_size = lot_size
         self.htf = htf
         self.ltf = ltf
+
+        # MT5 credentials
+        self.login = login
+        self.password = password
+        self.server = server
 
         # MT5 connection
         self.mt5 = None
@@ -112,7 +120,11 @@ class SMCTradeBot:
         try:
             from trading_bot.core.mt5_manager import MT5Manager
             logger.info("Connecting to MT5...")
-            self.mt5 = MT5Manager()
+            self.mt5 = MT5Manager(
+                login=self.login,
+                password=self.password,
+                server=self.server
+            )
 
             if not self.mt5.connect():
                 logger.error("Failed to connect to MT5")
@@ -414,6 +426,9 @@ def main():
     parser.add_argument('--htf', default='H1', help='Higher timeframe (H4, H1)')
     parser.add_argument('--ltf', default='M5', help='Lower timeframe (M5, M1)')
     parser.add_argument('--lot-size', type=float, default=0.04, help='Lot size')
+    parser.add_argument('--login', type=int, required=True, help='MT5 account login')
+    parser.add_argument('--password', type=str, required=True, help='MT5 account password')
+    parser.add_argument('--server', type=str, required=True, help='MT5 server name')
 
     args = parser.parse_args()
 
@@ -423,7 +438,10 @@ def main():
         debug=args.debug,
         lot_size=args.lot_size,
         htf=args.htf,
-        ltf=args.ltf
+        ltf=args.ltf,
+        login=args.login,
+        password=args.password,
+        server=args.server
     )
 
     bot.run()
