@@ -38,11 +38,23 @@ rsi_trending_threshold = 70  # RSI above this = trending up
 candle_trend_count = 3  # Number of bullish candles to confirm trend
 candle_body_pct = 0.6  # Candle body must be 60% of total range
 
+# Compression detection settings (dynamic lot sizing) - uses H1 timeframe
+compression_lookback = 10  # H1 candles to calculate baseline average body
+compression_check = 3  # Recent H1 candles to check for compression
+compression_threshold = 0.5  # Bodies must be 50% smaller than baseline
+min_lot = 0.01  # Minimum lot when NOT in compression
+compression_lot = 0.1  # Increased lot when compression detected
+compression_add_lot = 0.05  # Averaging lot during compression
+normal_add_lot = 0.01  # Averaging lot when not compressed
+
 # Track hedge state
 hedge_active = False
 hedge_identifier = 0
 short_entry_price = 0
 short_volume_at_hedge = 0
+
+# Track compression state
+is_compressed = False
 
 # Trade counter for identification
 trade_counter = 0
@@ -90,7 +102,7 @@ def get_sma():
     sma240 = df['sma_240'].iloc[-1]
     current_rsi = df['rsi'].iloc[-1]
 
-    # Store recent candles for trend analysis
+    # Store recent candles for trend analysis (M1)
     recent_candles = df[['open', 'high', 'low', 'close']].tail(candle_trend_count)
 
 
@@ -118,6 +130,70 @@ def is_trending_up():
 
     # Both conditions must be true for trending
     return rsi_trending and candles_trending
+
+
+def detect_compression():
+    """
+    Detect market compression using H1 candle body analysis.
+    Compression = last 3 H1 candles have bodies 50%+ smaller than baseline average.
+    Returns True if compression detected (good for mean reversion).
+    """
+    global is_compressed
+
+    # Fetch H1 data for compression analysis
+    h1_bars = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, compression_lookback + compression_check)
+    if h1_bars is None or len(h1_bars) < compression_lookback + compression_check:
+        print("H1 data unavailable for compression check")
+        return False
+
+    h1_df = pd.DataFrame(h1_bars)
+
+    # Calculate body sizes for all H1 candles
+    bodies = []
+    for _, candle in h1_df.iterrows():
+        body = abs(candle['close'] - candle['open'])
+        bodies.append(body)
+
+    # Baseline: average body of first N candles (prior trend)
+    baseline_bodies = bodies[:compression_lookback]
+    baseline_avg = sum(baseline_bodies) / len(baseline_bodies) if baseline_bodies else 0
+
+    if baseline_avg == 0:
+        return False
+
+    # Recent: last 3 H1 candles
+    recent_bodies = bodies[-compression_check:]
+    recent_avg = sum(recent_bodies) / len(recent_bodies) if recent_bodies else 0
+
+    # Check if recent bodies are significantly smaller (compression)
+    compression_ratio = recent_avg / baseline_avg
+
+    # Compression = recent bodies are 50% or less of baseline
+    is_compressed = compression_ratio <= compression_threshold
+
+    if is_compressed:
+        print(f"H1 COMPRESSION DETECTED: Recent avg body {compression_ratio:.1%} of baseline")
+    else:
+        print(f"H1 NO COMPRESSION: Body ratio {compression_ratio:.1%}")
+
+    return is_compressed
+
+
+def get_dynamic_lot():
+    """Return lot size based on compression state"""
+    if is_compressed:
+        return compression_lot
+    else:
+        return min_lot
+
+
+def get_dynamic_add_lot():
+    """Return averaging lot size based on compression state"""
+    if is_compressed:
+        return compression_add_lot
+    else:
+        return normal_add_lot
+
 
 def get_position_data():
     """Get position data for both short and hedge positions"""
@@ -310,12 +386,17 @@ while True:
     get_ask_bid()
     get_position_data()
 
-    # Define Sell Order
+    # Detect market compression for dynamic lot sizing
+    detect_compression()
+    current_lot = get_dynamic_lot()
+    current_add_lot = get_dynamic_add_lot()
+
+    # Define Sell Order (with dynamic lot size)
 
     sell_order = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
-        "volume": lot,
+        "volume": current_lot,
         "type": mt5.ORDER_TYPE_SELL,
         "price": ask,
         "sl": ask + sl_short * point,
@@ -330,7 +411,7 @@ while True:
     additional_sell_order = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
-        "volume": add_lot,
+        "volume": current_add_lot,
         "type": mt5.ORDER_TYPE_SELL,
         "price": ask,
         "sl": pos_price + sl_short * point,
