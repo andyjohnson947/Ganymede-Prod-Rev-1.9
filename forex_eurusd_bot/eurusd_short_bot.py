@@ -25,7 +25,7 @@ symbol = 'EURUSD'
 sl_multiplier = 13
 
 lot = 0.1
-add_lot = 0.01
+add_lot = 0.03
 min_deleverage = 15
 deleverage_steps = 7
 take_profit_short = 21
