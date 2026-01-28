@@ -44,6 +44,9 @@ hedge_identifier = 0
 short_entry_price = 0
 short_volume_at_hedge = 0
 
+# Trade counter for identification
+trade_counter = 0
+
 
 # Init
 if not mt5.initialize():
@@ -204,7 +207,7 @@ def open_hedge():
         "price": ask,
         "deviation": deviation,
         "magic": magic,
-        "comment": "python hedge",
+        "comment": f"RYU-HEDGE-{trade_counter}",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
@@ -235,7 +238,7 @@ def close_all_positions():
             "price": ask,
             "deviation": deviation,
             "magic": magic,
-            "comment": "close short",
+            "comment": f"RYU-CLOSE-S-{pos['identifier']}",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -253,7 +256,7 @@ def close_all_positions():
             "price": bid,
             "deviation": deviation,
             "magic": magic,
-            "comment": "close hedge",
+            "comment": f"RYU-CLOSE-H-{pos['identifier']}",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -319,7 +322,7 @@ while True:
         "tp": ask - take_profit_short * point,
         "deviation": deviation,
         "magic": magic,
-        "comment": "python short",
+        "comment": f"RYU-INIT-{trade_counter}",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -334,7 +337,7 @@ while True:
         "tp": pos_price - take_profit_short * point,
         "deviation": deviation,
         "magic": magic,
-        "comment": "python short",
+        "comment": f"RYU-AVG-{trade_counter}",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -407,13 +410,18 @@ while True:
 
     # First Entry (only if no hedge active)
     if pos_price == 0 and good_long_ma_order and not hedge_active:
+        trade_counter += 1
+        sell_order["comment"] = f"RYU-INIT-{trade_counter}"
         sell = mt5.order_send(sell_order)
+        print(f"NEW TRADE CYCLE #{trade_counter}")
     elif pos_price == 0:
         print(f' {symbol} Not Ready')
 
     # Additional Entry (only if no hedge active)
     if pos_price > 0 and good_long_ma_order and sma6L > pos_price and not hedge_active:
+        additional_sell_order["comment"] = f"RYU-AVG-{trade_counter}"
         sell = mt5.order_send(additional_sell_order)
+        print(f"AVERAGING DOWN - Trade #{trade_counter}")
         time.sleep(0.01)
         check_sl = mt5.order_send(sltp_request_sell_pos)
 
